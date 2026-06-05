@@ -109,9 +109,9 @@ class JiraService {
 
     // Collect all tasks, handling errors gracefully
     const allTasks: JiraTask[] = []
-    results.forEach((result) => {
+    results.forEach((result: PromiseSettledResult<any>) => {
       if (result.status === 'fulfilled') {
-        allTasks.push(...result.value.data)
+        allTasks.push(...(result as PromiseFulfilledResult<any>).value.data)
       }
       // Silently skip failed teams (e.g., no access to DFO)
     })
@@ -140,9 +140,9 @@ class JiraService {
 
     // Collect all tasks, handling errors gracefully
     const allTasks: JiraTask[] = []
-    results.forEach((result) => {
+    results.forEach((result: PromiseSettledResult<any>) => {
       if (result.status === 'fulfilled') {
-        allTasks.push(...result.value.data)
+        allTasks.push(...(result as PromiseFulfilledResult<any>).value.data)
       }
       // Silently skip failed teams (e.g., no access to DFO)
     })
