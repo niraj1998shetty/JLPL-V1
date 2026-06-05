@@ -7,7 +7,17 @@ import worklogsRouter from './routes/worklogs'
 
 const app = express()
 
-app.use(cors({ origin: config.corsOrigin, credentials: true }))
+const allowedOrigins = config.corsOrigin.split(',').map(o => o.trim())
+app.use(cors({
+  origin: (origin, callback) => {
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true)
+    } else {
+      callback(new Error('Not allowed by CORS'))
+    }
+  },
+  credentials: true
+}))
 app.use(express.json())
 
 // Health check
