@@ -29,5 +29,5 @@ export interface JiraSubmitPayload {
 
 export interface AuthConfig {
   pat: string
-  team: JiraTeam
+  teams: JiraTeam[]
 }

@@ -8,18 +8,31 @@ export default function LoginPage() {
   const navigate = useNavigate()
 
   const [pat, setPat] = useState('')
-  const [team, setTeam] = useState<JiraTeam>('DMO')
+  const [selectedTeams, setSelectedTeams] = useState<Set<JiraTeam>>(new Set(['DMO']))
   const [showPat, setShowPat] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState('')
 
+  const handleTeamToggle = (team: JiraTeam) => {
+    setSelectedTeams((prev) => {
+      const next = new Set(prev)
+      if (next.has(team)) {
+        next.delete(team)
+      } else {
+        next.add(team)
+      }
+      // Ensure at least one team is selected
+      return next.size > 0 ? next : new Set([team])
+    })
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!pat.trim()) return
+    if (!pat.trim() || selectedTeams.size === 0) return
     setError('')
     setIsLoading(true)
     try {
-      await login(pat.trim(), team)
+      await login(pat.trim(), Array.from(selectedTeams))
       navigate('/dashboard')
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Connection failed. Check your token and try again.'
@@ -102,19 +115,25 @@ export default function LoginPage() {
 
             {/* Team Selector */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Select your team</label>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Select your team(s)</label>
+              <p className="text-xs text-gray-500 mb-2">You can select multiple teams to log hours for</p>
               <div className="grid grid-cols-2 gap-3">
                 {(['DMO', 'DFO'] as JiraTeam[]).map((t) => (
                   <button
                     key={t}
                     type="button"
-                    onClick={() => setTeam(t)}
+                    onClick={() => handleTeamToggle(t)}
                     className={`py-3 rounded-xl border-2 font-bold text-base tracking-wide transition-all duration-150 ${
-                      team === t
+                      selectedTeams.has(t)
                         ? 'border-jira-blue bg-jira-blue-light text-jira-blue'
                         : 'border-gray-200 text-gray-500 hover:border-gray-300 hover:bg-gray-50'
                     }`}
                   >
+                    {selectedTeams.has(t) && (
+                      <svg className="w-4 h-4 inline mr-1" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                      </svg>
+                    )}
                     {t}
                   </button>
                 ))}

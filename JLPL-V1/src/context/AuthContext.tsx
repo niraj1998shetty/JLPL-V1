@@ -4,13 +4,14 @@ import { jiraService } from '../services/jiraService'
 
 interface AuthState {
   isAuthenticated: boolean
-  team: JiraTeam
+  teams: JiraTeam[]
   userName: string
 }
 
 interface AuthContextValue extends AuthState {
-  login: (pat: string, team: JiraTeam) => Promise<void>
+  login: (pat: string, teams: JiraTeam[]) => Promise<void>
   logout: () => void
+  getPat: () => string
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null)
@@ -18,27 +19,31 @@ const AuthContext = createContext<AuthContextValue | null>(null)
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [state, setState] = useState<AuthState>(() => ({
     isAuthenticated: jiraService.hasPat(),
-    team: jiraService.getTeam(),
+    teams: jiraService.getTeams(),
     userName: '',
   }))
 
-  const login = useCallback(async (pat: string, team: JiraTeam) => {
-    const result = await jiraService.validatePat(pat, team)
+  const login = useCallback(async (pat: string, teams: JiraTeam[]) => {
+    const result = await jiraService.validatePat(pat, teams)
     if (!result.valid) {
       throw new Error('Invalid PAT or unauthorized access.')
     }
     jiraService.setPat(pat)
-    jiraService.setTeam(team)
-    setState({ isAuthenticated: true, team, userName: result.name ?? '' })
+    jiraService.setTeams(teams)
+    setState({ isAuthenticated: true, teams, userName: result.name ?? '' })
   }, [])
 
   const logout = useCallback(() => {
     jiraService.clearAuth()
-    setState({ isAuthenticated: false, team: 'DMO', userName: '' })
+    setState({ isAuthenticated: false, teams: ['DMO'], userName: '' })
+  }, [])
+
+  const getPat = useCallback(() => {
+    return jiraService.getPat()
   }, [])
 
   return (
-    <AuthContext.Provider value={{ ...state, login, logout }}>
+    <AuthContext.Provider value={{ ...state, login, logout, getPat }}>
       {children}
     </AuthContext.Provider>
   )

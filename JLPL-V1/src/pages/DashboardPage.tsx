@@ -26,7 +26,7 @@ function isToday(date: Date): boolean {
 }
 
 export default function DashboardPage() {
-  const { logout, team, userName } = useAuth()
+  const { logout, teams, userName, getPat } = useAuth()
 
   const [selectedDate, setSelectedDate] = useState(new Date())
   const [tasks, setTasks] = useState<JiraTask[]>([])
@@ -251,7 +251,7 @@ export default function DashboardPage() {
             </div>
             <div>
               <h1 className="font-bold text-sm leading-tight">Jira Log Private LTD</h1>
-              <span className="text-blue-200 text-xs">{team} team</span>
+              <span className="text-blue-200 text-xs">{teams.join(', ')} team{teams.length > 1 ? 's' : ''}</span>
             </div>
           </div>
           <div className="flex items-center gap-2">
@@ -425,7 +425,8 @@ export default function DashboardPage() {
       {/* Settings drawer */}
       {showSettings && (
         <SettingsDrawer
-          team={team}
+          teams={teams}
+          currentPat={getPat()}
           onClose={() => setShowSettings(false)}
           onLogout={() => {
             setShowSettings(false)
@@ -550,14 +551,24 @@ function ConfirmDialog({
 }
 
 function SettingsDrawer({
-  team,
+  teams,
+  currentPat,
   onClose,
   onLogout,
 }: {
-  team: string
+  teams: string[]
+  currentPat: string
   onClose: () => void
   onLogout: () => void
 }) {
+  const [copied, setCopied] = useState(false)
+
+  const handleCopyPat = () => {
+    navigator.clipboard.writeText(currentPat)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
+
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40" onClick={onClose}>
       <div
@@ -566,7 +577,30 @@ function SettingsDrawer({
       >
         <div className="w-10 h-1 bg-gray-200 rounded-full mx-auto mb-5" />
         <h3 className="font-semibold text-gray-800 mb-1">Settings</h3>
-        <p className="text-sm text-gray-500 mb-5">Logged in as team <strong>{team}</strong></p>
+        <p className="text-sm text-gray-500 mb-5">Logged in as team <strong>{teams.join(', ')}</strong></p>
+
+        {/* Current token display */}
+        <div className="mb-5 p-4 bg-gray-50 rounded-xl border border-gray-200">
+          <p className="text-xs font-semibold text-gray-600 mb-2">Current Token</p>
+          <div className="flex items-center gap-2">
+            <input
+              type="password"
+              value={currentPat}
+              readOnly
+              className="flex-1 px-3 py-2 text-sm border border-gray-300 rounded-lg bg-white text-gray-700"
+            />
+            <button
+              onClick={handleCopyPat}
+              className={`px-3 py-2 text-sm font-medium rounded-lg transition-colors ${
+                copied
+                  ? 'bg-green-100 text-green-700 border border-green-300'
+                  : 'bg-gray-200 text-gray-700 hover:bg-gray-300 border border-gray-300'
+              }`}
+            >
+              {copied ? '✓ Copied' : 'Copy'}
+            </button>
+          </div>
+        </div>
 
         <button
           onClick={onLogout}
