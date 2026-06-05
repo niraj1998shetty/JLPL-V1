@@ -55,7 +55,7 @@ class JiraService {
       }
     }
     return ['DMO']
-  }S
+  }
 
   setTeams(teams: JiraTeam[]): void {
     localStorage.setItem(STORAGE_KEY_TEAMS, JSON.stringify(teams))
