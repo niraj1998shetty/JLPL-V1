@@ -173,7 +173,8 @@ export default function DashboardPage() {
     // Pre-loaded subtasks (isParentOnly tasks)
     const subtaskHours = (task.subtasks ?? []).reduce((s, sub) => s + (existingWorklogs[sub.id] ?? 0), 0)
     // Known subtask keys from default task fetch (direct children, not yet expanded)
-    const subtaskKeyHours = (task.subtaskKeys ?? []).reduce((s, key) => s + (existingWorklogs[key] ?? 0), 0)
+    // Only count these if subtasks haven't been loaded yet to avoid double-counting
+    const subtaskKeyHours = task.subtasks ? 0 : (task.subtaskKeys ?? []).reduce((s, key) => s + (existingWorklogs[key] ?? 0), 0)
     return own + subtaskHours + subtaskKeyHours
   }
 
