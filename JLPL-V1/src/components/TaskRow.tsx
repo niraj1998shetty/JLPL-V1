@@ -8,6 +8,7 @@ interface TaskRowProps {
   isSubtask?: boolean
   isExpandable?: boolean
   isExpanded?: boolean
+  isLoadingExpand?: boolean
   hours: string
   comment: string
   existingHours: number
@@ -22,6 +23,7 @@ export default function TaskRow({
   isSubtask = false,
   isExpandable = false,
   isExpanded = false,
+  isLoadingExpand = false,
   hours,
   comment,
   existingHours,
@@ -34,6 +36,7 @@ export default function TaskRow({
   const infoButtonRef = useRef<HTMLButtonElement>(null)
   const popupRef = useRef<HTMLDivElement>(null)
   const [showPopup, setShowPopup] = useState(false)
+  const [showPlaceholder, setShowPlaceholder] = useState(true)
   const [popupPos, setPopupPos] = useState({ top: 0, left: 0 })
   const hasHours = parseFloat(hours) > 0
 
@@ -92,28 +95,45 @@ export default function TaskRow({
     }
   }, [showPopup])
 
+  function handleRowClick() {
+    if (isExpandable && !isSubtask) {
+      onToggleExpand?.(task.id)
+    }
+  }
+
   return (
     <div
       className={`border-b border-gray-100 last:border-0 ${
-        isSubtask ? 'bg-gray-50/60' : 'bg-white'
-      } ${isExpandable ? 'cursor-pointer' : ''}`}
-      onClick={isExpandable ? () => onToggleExpand?.(task.id) : undefined}
+        isSubtask ? 'bg-gray-100' : 'bg-white'
+      }`}
     >
       <div
-        className={`flex items-start gap-2 py-2.5 pr-3 ${isSubtask ? 'pl-9' : 'pl-3'}`}
+        className={`flex items-start gap-2 py-2.5 pr-3 ${isSubtask ? 'pl-9' : 'pl-3'} ${
+          isExpandable && !isSubtask ? 'cursor-pointer hover:bg-blue-50 transition-colors' : ''
+        }`}
+        onClick={handleRowClick}
       >
-        {/* Expand chevron */}
+        {/* Expand chevron or loader */}
         {isExpandable ? (
-          <div className="mt-0.5 flex-shrink-0 w-5 text-gray-400">
-            <svg
-              className={`w-4 h-4 transition-transform duration-150 ${isExpanded ? 'rotate-90' : ''}`}
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-            </svg>
-          </div>
+          isLoadingExpand ? (
+            <div className="mt-0.5 flex-shrink-0 w-5 flex items-center justify-center">
+              <svg className="animate-spin h-4 w-4 text-gray-400" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+              </svg>
+            </div>
+          ) : (
+            <div className="mt-0.5 flex-shrink-0 w-5 text-gray-400 group-hover:text-gray-600">
+              <svg
+                className={`w-4 h-4 transition-transform duration-150 ${isExpanded ? 'rotate-90' : ''}`}
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+              </svg>
+            </div>
+          )
         ) : (
           <div className="w-5 flex-shrink-0" />
         )}
@@ -131,7 +151,7 @@ export default function TaskRow({
               {task.id}
             </a>
             {task.taskType === 'test' && (
-              <span className="text-[9px] font-bold tracking-wide px-1.5 py-0.5 rounded bg-amber-50 text-amber-700 border border-amber-200 flex-shrink-0">
+              <span className="text-[9px] font-bold tracking-wide px-1.5 py-0.5 rounded bg-amber-200 text-amber-900 border border-amber-300 flex-shrink-0">
                 TEST
               </span>
             )}
@@ -181,7 +201,9 @@ export default function TaskRow({
             onChange={(e) => onHoursChange(task.id, e.target.value)}
             onKeyDown={handleKeyDown}
             onWheel={handleWheel}
-            placeholder="0"
+            onFocus={() => setShowPlaceholder(false)}
+            onBlur={() => setShowPlaceholder(true)}
+            placeholder={showPlaceholder ? "0" : ""}
             className="w-16 px-2 py-1.5 text-sm text-center border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-jira-blue focus:border-transparent bg-white"
           />
           {existingHours > 0 && (

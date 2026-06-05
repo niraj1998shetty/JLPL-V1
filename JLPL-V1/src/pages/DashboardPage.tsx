@@ -31,6 +31,7 @@ export default function DashboardPage() {
   const [selectedDate, setSelectedDate] = useState(new Date())
   const [tasks, setTasks] = useState<JiraTask[]>([])
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set())
+  const [expandingTaskId, setExpandingTaskId] = useState<string | null>(null)
   const [hours, setHours] = useState<HoursMap>({})
   const [comments, setComments] = useState<CommentMap>({})
   const [existingWorklogs, setExistingWorklogs] = useState<Record<string, number>>({})
@@ -145,6 +146,7 @@ export default function DashboardPage() {
       })
 
       if (!expandedIds.has(taskId) && !task.subtasks) {
+        setExpandingTaskId(taskId)
         try {
           const subtasks = await jiraService.getSubtasks(taskId)
           setTasks((prev) =>
@@ -162,6 +164,8 @@ export default function DashboardPage() {
           })
         } catch {
           // subtasks failed to load — keep expanded with empty list
+        } finally {
+          setExpandingTaskId(null)
         }
       }
     },
@@ -317,15 +321,15 @@ export default function DashboardPage() {
 
         {/* Task table */}
         {!isLoadingTasks && !taskError && (
-          <div className="flex-1 overflow-y-auto">
-            {/* Worklog loading indicator */}
+          <div className="flex-1 overflow-y-auto relative">
+            {/* Worklog loading overlay */}
             {isLoadingWorklogs && (
-              <div className="px-4 py-2 text-xs text-gray-400 flex items-center gap-1.5 border-b border-gray-100">
-                <svg className="animate-spin h-3 w-3" fill="none" viewBox="0 0 24 24">
+              <div className="absolute inset-0 bg-white/80 z-40 flex flex-col items-center justify-center gap-3">
+                <svg className="animate-spin h-8 w-8 text-jira-blue" fill="none" viewBox="0 0 24 24">
                   <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                   <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
                 </svg>
-                Loading time entries...
+                <p className="text-xs text-gray-600">Loading time entries...</p>
               </div>
             )}
 
@@ -347,6 +351,7 @@ export default function DashboardPage() {
                     comments={comments}
                     existingWorklogs={existingWorklogs}
                     expandedIds={expandedIds}
+                    expandingTaskId={expandingTaskId}
                     onHoursChange={handleHoursChange}
                     onCommentChange={handleCommentChange}
                     onToggleExpand={handleToggleExpand}
@@ -369,6 +374,7 @@ export default function DashboardPage() {
                     comments={comments}
                     existingWorklogs={existingWorklogs}
                     expandedIds={expandedIds}
+                    expandingTaskId={expandingTaskId}
                     onHoursChange={handleHoursChange}
                     onCommentChange={handleCommentChange}
                     onToggleExpand={handleToggleExpand}
@@ -447,6 +453,7 @@ interface TaskSectionProps {
   comments: CommentMap
   existingWorklogs: Record<string, number>
   expandedIds: Set<string>
+  expandingTaskId: string | null
   showEstimate: boolean
   onHoursChange: (id: string, v: string) => void
   onCommentChange: (id: string, v: string) => void
@@ -460,6 +467,7 @@ function TaskSection({
   comments,
   existingWorklogs,
   expandedIds,
+  expandingTaskId,
   showEstimate,
   onHoursChange,
   onCommentChange,
@@ -477,6 +485,7 @@ function TaskSection({
         task={task}
         isExpandable={task.isExpandable}
         isExpanded={isExpanded}
+        isLoadingExpand={expandingTaskId === task.id}
         hours={hours[task.id] ?? ''}
         comment={comments[task.id] ?? ''}
         existingHours={existingHours}
