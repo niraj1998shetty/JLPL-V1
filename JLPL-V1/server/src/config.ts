@@ -18,7 +18,7 @@ export const config = {
     storyPointsField: process.env.JIRA_STORY_POINTS_FIELD ?? 'customfield_10016',
     defaultTasks: {
       DMO: ['DMO-6276', 'DMO-6270'],
-      DFO: ['DFO-100', 'DFO-101'],
+      DFO: ['DFO-5624', 'DFO-10509', 'DFO-10512'],
     } as Record<string, string[]>,
   },
 }
