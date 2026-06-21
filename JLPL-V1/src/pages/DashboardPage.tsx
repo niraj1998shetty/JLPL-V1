@@ -16,6 +16,20 @@ function formatDateForApi(date: Date): string {
   return `${y}-${m}-${d}`
 }
 
+function getMondayOfCurrentWeek(): Date {
+  const today = new Date()
+  const day = today.getDay() // 0 = Sunday, 1 = Monday, ..., 6 = Saturday
+  const diff = today.getDate() - day + (day === 0 ? -6 : 1)
+  return new Date(today.getFullYear(), today.getMonth(), diff)
+}
+
+function formatWeekOfDate(date: Date): string {
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}T07%3A00%3A00.000Z`
+}
+
 function isToday(date: Date): boolean {
   const today = new Date()
   return (
@@ -256,6 +270,23 @@ export default function DashboardPage() {
           </div>
           <div className="flex items-center gap-2">
             {userName && <span className="hidden sm:block text-xs text-blue-200 mr-1">{userName}</span>}
+            <button
+              onClick={() => window.open('https://jira.eg.dk/secure/jiraerpOverviewPageWebworkAction.jspa', '_blank')}
+              className="px-3 py-1.5 rounded-lg hover:bg-white/10 text-blue-200 hover:text-white transition-colors text-sm font-medium"
+              title="ERP"
+            >
+              ERP
+            </button>
+            <button
+              onClick={() => {
+                const weekOf = formatWeekOfDate(getMondayOfCurrentWeek())
+                window.open(`https://5177942.app.netsuite.com/app/site/hosting/scriptlet.nl?script=21365&deploy=1&compid=5177942&empid=3585269&weekof=${weekOf}&whence=`, '_blank')
+              }}
+              className="p-1.5 rounded-lg hover:bg-white/10 text-blue-200 hover:text-white transition-colors"
+              title="NetSuite App"
+            >
+              NetSuite
+            </button>
             <button
               onClick={() => setShowSettings(true)}
               className="p-1.5 rounded-lg hover:bg-white/10 text-blue-200 hover:text-white transition-colors"
