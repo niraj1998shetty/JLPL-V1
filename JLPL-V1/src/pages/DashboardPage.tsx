@@ -16,19 +16,19 @@ function formatDateForApi(date: Date): string {
   return `${y}-${m}-${d}`
 }
 
-function getMondayOfCurrentWeek(): Date {
-  const today = new Date()
-  const day = today.getDay() // 0 = Sunday, 1 = Monday, ..., 6 = Saturday
-  const diff = today.getDate() - day + (day === 0 ? -6 : 1)
-  return new Date(today.getFullYear(), today.getMonth(), diff)
+//function getMondayOfCurrentWeek(): Date {
+//  const today = new Date()
+//  const day = today.getDay() // 0 = Sunday, 1 = Monday, ..., 6 = Saturday
+//  const diff = today.getDate() - day + (day === 0 ? -6 : 1)
+//  return new Date(today.getFullYear(), today.getMonth(), diff)
 }
 
-function formatWeekOfDate(date: Date): string {
-  const year = date.getFullYear()
-  const month = String(date.getMonth() + 1).padStart(2, '0')
-  const day = String(date.getDate()).padStart(2, '0')
-  return `${year}-${month}-${day}T07%3A00%3A00.000Z`
-}
+//function formatWeekOfDate(date: Date): string {
+//  const year = date.getFullYear()
+//  const month = String(date.getMonth() + 1).padStart(2, '0')
+//  const day = String(date.getDate()).padStart(2, '0')
+//  return `${year}-${month}-${day}T07%3A00%3A00.000Z`
+//}
 
 function isToday(date: Date): boolean {
   const today = new Date()
