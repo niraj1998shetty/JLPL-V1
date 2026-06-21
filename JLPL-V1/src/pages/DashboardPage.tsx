@@ -21,7 +21,7 @@ function formatDateForApi(date: Date): string {
 //  const day = today.getDay() // 0 = Sunday, 1 = Monday, ..., 6 = Saturday
 //  const diff = today.getDate() - day + (day === 0 ? -6 : 1)
 //  return new Date(today.getFullYear(), today.getMonth(), diff)
-}
+//}
 
 //function formatWeekOfDate(date: Date): string {
 //  const year = date.getFullYear()
