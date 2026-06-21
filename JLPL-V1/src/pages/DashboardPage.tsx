@@ -277,7 +277,7 @@ export default function DashboardPage() {
             >
               ERP
             </button>
-            <button
+            {/* <button
               onClick={() => {
                 const weekOf = formatWeekOfDate(getMondayOfCurrentWeek())
                 window.open(`https://5177942.app.netsuite.com/app/site/hosting/scriptlet.nl?script=21365&deploy=1&compid=5177942&empid=3585269&weekof=${weekOf}&whence=`, '_blank')
@@ -286,7 +286,7 @@ export default function DashboardPage() {
               title="NetSuite App"
             >
               NetSuite
-            </button>
+            </button> */}
             <button
               onClick={() => setShowSettings(true)}
               className="p-1.5 rounded-lg hover:bg-white/10 text-blue-200 hover:text-white transition-colors"
