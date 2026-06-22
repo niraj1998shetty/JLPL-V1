@@ -5,7 +5,6 @@ import Calendar from './Calendar'
 interface DateNavProps {
   date: Date
   onNavigate: (direction: -1 | 1) => void
-  onJumpToToday: () => void
   onSelectDate: (date: Date) => void
 }
 
@@ -32,7 +31,7 @@ function formatDate(date: Date): string {
   })
 }
 
-export default function DateNav({ date, onNavigate, onJumpToToday, onSelectDate }: DateNavProps) {
+export default function DateNav({ date, onNavigate, onSelectDate }: DateNavProps) {
   const today = isToday(date)
   const weekend = isWeekend(date)
 
@@ -124,15 +123,6 @@ export default function DateNav({ date, onNavigate, onJumpToToday, onSelectDate 
           <span className="text-xs font-medium text-jira-blue bg-jira-blue-light px-1.5 py-0.5 rounded">
             Today
           </span>
-        )}
-        {!today && (
-          <button
-            onClick={onJumpToToday}
-            className="text-xs font-medium text-jira-blue hover:bg-jira-blue-light px-1.5 py-0.5 rounded border border-jira-blue/30 transition-colors"
-            aria-label="Jump to today"
-          >
-            Today
-          </button>
         )}
       </div>
 

@@ -21,6 +21,8 @@ export interface JiraTimeEntry {
   hours: number
   date: string
   comment?: string
+  id?: string
+  started?: string
 }
 
 export interface JiraSubmitPayload {

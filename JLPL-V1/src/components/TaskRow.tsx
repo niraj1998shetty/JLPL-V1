@@ -12,10 +12,14 @@ interface TaskRowProps {
   hours: string
   comment: string
   existingHours: number
+  ownLoggedHours?: number
+  pendingChildHours?: number
   showEstimate?: boolean
+  canEdit?: boolean
   onHoursChange: (taskId: string, hours: string) => void
   onCommentChange: (taskId: string, comment: string) => void
   onToggleExpand?: (taskId: string) => void
+  onEdit?: (taskId: string) => void
 }
 
 export default function TaskRow({
@@ -27,10 +31,14 @@ export default function TaskRow({
   hours,
   comment,
   existingHours,
+  ownLoggedHours,
+  pendingChildHours = 0,
   showEstimate = false,
+  canEdit = false,
   onHoursChange,
   onCommentChange,
   onToggleExpand,
+  onEdit,
 }: TaskRowProps) {
   const inputRef = useRef<HTMLInputElement>(null)
   const infoButtonRef = useRef<HTMLButtonElement>(null)
@@ -188,27 +196,50 @@ export default function TaskRow({
 
         {/* Hours column */}
         <div
-          className="flex flex-col items-center flex-shrink-0 w-20"
+          className="flex flex-col items-end flex-shrink-0 w-24"
           onClick={(e) => e.stopPropagation()}
         >
-          <input
-            ref={inputRef}
-            type="number"
-            step="0.25"
-            min="0"
-            max="24"
-            inputMode="decimal"
-            value={hours}
-            onChange={(e) => onHoursChange(task.id, e.target.value)}
-            onKeyDown={handleKeyDown}
-            onWheel={handleWheel}
-            onFocus={() => setShowPlaceholder(false)}
-            onBlur={() => setShowPlaceholder(true)}
-            placeholder={showPlaceholder ? "0" : ""}
-            className="w-16 px-2 py-1.5 text-sm text-center border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-jira-blue focus:border-transparent bg-white"
-          />
+          <div className="flex items-center gap-1">
+            {canEdit && (ownLoggedHours ?? 0) > 0 && onEdit && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  onEdit(task.id)
+                }}
+                className="flex-shrink-0 text-gray-400 hover:text-jira-blue transition-colors"
+                aria-label="Edit logged hours"
+                title="Edit logged hours"
+              >
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                </svg>
+              </button>
+            )}
+            <input
+              ref={inputRef}
+              type="number"
+              step="0.25"
+              min="0"
+              max="24"
+              inputMode="decimal"
+              value={hours}
+              onChange={(e) => onHoursChange(task.id, e.target.value)}
+              onKeyDown={handleKeyDown}
+              onWheel={handleWheel}
+              onFocus={() => setShowPlaceholder(false)}
+              onBlur={() => setShowPlaceholder(true)}
+              placeholder={showPlaceholder ? "0" : ""}
+              className="w-16 px-2 py-1.5 text-sm text-center border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-jira-blue focus:border-transparent bg-white"
+            />
+          </div>
           {existingHours > 0 && (
             <span className="text-[10px] text-gray-400 mt-0.5 whitespace-nowrap">{existingHours}h logged</span>
+          )}
+          {pendingChildHours > 0 && (
+            <span className="text-[10px] text-jira-blue mt-0.5 whitespace-nowrap" title="Unsaved hours on subtasks">
+              +{pendingChildHours.toFixed(2).replace(/\.?0+$/, '')}h on subtasks
+            </span>
           )}
         </div>
       </div>

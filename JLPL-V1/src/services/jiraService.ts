@@ -3,6 +3,7 @@ import { JiraSubmitPayload, JiraTask, JiraTeam, JiraTimeEntry } from '../types/j
 
 const STORAGE_KEY_PAT = 'jlpl_pat'
 const STORAGE_KEY_TEAMS = 'jlpl_teams'
+const STORAGE_KEY_NAME = 'jlpl_user_name'
 
 class JiraService {
   private client: AxiosInstance
@@ -61,6 +62,15 @@ class JiraService {
     localStorage.setItem(STORAGE_KEY_TEAMS, JSON.stringify(teams))
   }
 
+  getUserName(): string {
+    return localStorage.getItem(STORAGE_KEY_NAME) ?? ''
+  }
+
+  setUserName(name: string): void {
+    if (name) localStorage.setItem(STORAGE_KEY_NAME, name)
+    else localStorage.removeItem(STORAGE_KEY_NAME)
+  }
+
   // Deprecated: kept for compatibility
   getTeam(): JiraTeam {
     return this.getTeams()[0]
@@ -74,6 +84,7 @@ class JiraService {
   clearAuth(): void {
     localStorage.removeItem(STORAGE_KEY_PAT)
     localStorage.removeItem(STORAGE_KEY_TEAMS)
+    localStorage.removeItem(STORAGE_KEY_NAME)
   }
 
   async validatePat(pat: string, teams: JiraTeam[]): Promise<{ valid: boolean; name?: string }> {
@@ -170,6 +181,31 @@ class JiraService {
 
   async logWork(payload: JiraSubmitPayload): Promise<void> {
     await this.client.post('/worklogs', payload)
+  }
+
+  async getTaskWorklogs(taskId: string, dateStr: string): Promise<JiraTimeEntry[]> {
+    const res = await this.client.get<JiraTimeEntry[]>(`/worklogs/task/${taskId}`, {
+      params: { date: dateStr },
+    })
+    return res.data
+  }
+
+  async updateWorklog(
+    taskId: string,
+    worklogId: string,
+    hours: number,
+    dateStr: string,
+    comment?: string
+  ): Promise<void> {
+    await this.client.put(`/worklogs/task/${taskId}/${worklogId}`, {
+      hours,
+      date: dateStr,
+      comment,
+    })
+  }
+
+  async deleteWorklog(taskId: string, worklogId: string): Promise<void> {
+    await this.client.delete(`/worklogs/task/${taskId}/${worklogId}`)
   }
 }
 

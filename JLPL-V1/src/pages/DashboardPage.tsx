@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import DateNav from '../components/DateNav'
 import SummaryBar from '../components/SummaryBar'
 import TaskRow from '../components/TaskRow'
+import WorklogEditModal from '../components/WorklogEditModal'
 import { useAuth } from '../context/AuthContext'
 import { jiraService } from '../services/jiraService'
 import { JiraTask, JiraTimeEntry } from '../types/jira'
@@ -39,6 +40,14 @@ function isToday(date: Date): boolean {
   )
 }
 
+function getInitials(name: string | null | undefined): string {
+  if (!name) return '?'
+  const parts = name.trim().split(/\s+/).filter(Boolean)
+  if (parts.length === 0) return '?'
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase()
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
+}
+
 export default function DashboardPage() {
   const { logout, teams, userName, getPat } = useAuth()
 
@@ -58,6 +67,35 @@ export default function DashboardPage() {
   const [showConfirm, setShowConfirm] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
   const [successMsg, setSuccessMsg] = useState('')
+  const [editingTask, setEditingTask] = useState<{ id: string; title: string } | null>(null)
+  const [showUserMenu, setShowUserMenu] = useState(false)
+  const userMenuRef = useRef<HTMLDivElement>(null)
+
+  // Close user menu on outside click or Escape
+  useEffect(() => {
+    if (!showUserMenu) return
+    function onDown(e: MouseEvent) {
+      if (!userMenuRef.current?.contains(e.target as Node)) {
+        setShowUserMenu(false)
+      }
+    }
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') setShowUserMenu(false)
+    }
+    document.addEventListener('mousedown', onDown)
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('mousedown', onDown)
+      document.removeEventListener('keydown', onKey)
+    }
+  }, [showUserMenu])
+
+  // Auto-dismiss the success toast after 3 seconds.
+  useEffect(() => {
+    if (!successMsg) return
+    const id = window.setTimeout(() => setSuccessMsg(''), 3000)
+    return () => window.clearTimeout(id)
+  }, [successMsg])
 
   const abortRef = useRef<AbortController | null>(null)
   const dateRef = useRef(selectedDate)
@@ -233,6 +271,75 @@ export default function DashboardPage() {
     resetSession()
   }
 
+  // Worklogs can be edited for up to 14 days back (inclusive of today).
+  function isEditableDate(date: Date): boolean {
+    const today = new Date()
+    today.setHours(23, 59, 59, 999)
+    const cutoff = new Date()
+    cutoff.setDate(cutoff.getDate() - 14)
+    cutoff.setHours(0, 0, 0, 0)
+    return date <= today && date >= cutoff
+  }
+  const canEditSelectedDate = isEditableDate(selectedDate)
+
+  function findTaskById(id: string): JiraTask | null {
+    for (const t of tasks) {
+      if (t.id === id) return t
+      for (const sub of t.subtasks ?? []) {
+        if (sub.id === id) return sub
+      }
+    }
+    return null
+  }
+
+  function handleEditTask(taskId: string) {
+    const task = findTaskById(taskId)
+    const title = task ? `${task.id} ${task.summary}` : taskId
+    setEditingTask({ id: taskId, title })
+  }
+
+  // Called after the user saves or deletes a worklog entry in the modal.
+  // deltaHours can be negative. We update task totals + the per-row "Xh logged"
+  // indicator immediately so the UI reflects the change without a reload.
+  function handleWorklogChanged(taskId: string, deltaHours: number) {
+    const now = new Date().toISOString()
+
+    setTasks((prev) =>
+      prev.map((t) => {
+        const descendantIds = new Set<string>([
+          ...(t.subtasks ?? []).map((s) => s.id),
+          ...(t.subtaskKeys ?? []),
+        ])
+        const ownChange = t.id === taskId ? deltaHours : 0
+        const aggregateChange = ownChange + (descendantIds.has(taskId) ? deltaHours : 0)
+
+        const bumpedSubs = t.subtasks?.map((sub) =>
+          sub.id === taskId
+            ? {
+                ...sub,
+                totalLoggedHours: Math.max(0, (sub.totalLoggedHours ?? 0) + deltaHours),
+                updatedAt: now,
+              }
+            : sub
+        )
+
+        if (aggregateChange === 0 && bumpedSubs === t.subtasks) return t
+        return {
+          ...t,
+          totalLoggedHours: Math.max(0, (t.totalLoggedHours ?? 0) + aggregateChange),
+          updatedAt: aggregateChange !== 0 ? now : t.updatedAt,
+          subtasks: bumpedSubs,
+        }
+      })
+    )
+
+    setExistingWorklogs((prev) => {
+      const current = prev[taskId] ?? 0
+      const next = Math.max(0, current + deltaHours)
+      return { ...prev, [taskId]: next }
+    })
+  }
+
   function resetSession() {
     setHours((prev) => {
       const next: HoursMap = {}
@@ -324,7 +431,15 @@ export default function DashboardPage() {
             </div>
           </div>
           <div className="flex items-center gap-2">
-            {userName && <span className="hidden sm:block text-xs text-blue-200 mr-1">{userName}</span>}
+            {!isToday(selectedDate) && (
+              <button
+                onClick={jumpToToday}
+                className="px-3 py-1.5 rounded-lg hover:bg-white/10 text-blue-200 hover:text-white transition-colors text-sm font-medium"
+                title="Jump to today"
+              >
+                Today
+              </button>
+            )}
             <button
               onClick={() => window.open('https://jira.eg.dk/secure/jiraerpOverviewPageWebworkAction.jspa', '_blank')}
               className="px-3 py-1.5 rounded-lg hover:bg-white/10 text-blue-200 hover:text-white transition-colors text-sm font-medium"
@@ -342,16 +457,46 @@ export default function DashboardPage() {
             >
               NetSuite
             </button> */}
-            <button
-              onClick={() => setShowSettings(true)}
-              className="p-1.5 rounded-lg hover:bg-white/10 text-blue-200 hover:text-white transition-colors"
-              title="Settings"
-            >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-              </svg>
-            </button>
+            <div ref={userMenuRef} className="relative">
+              <button
+                onClick={() => setShowUserMenu((v) => !v)}
+                className="w-9 h-9 rounded-full bg-jira-navy text-white font-semibold text-sm flex items-center justify-center border-2 border-white/40 hover:border-white/70 hover:bg-white/10 transition-colors"
+                title={userName || 'Account'}
+                aria-haspopup="menu"
+                aria-expanded={showUserMenu}
+              >
+                {getInitials(userName)}
+              </button>
+              {showUserMenu && (
+                <div
+                  role="menu"
+                  className="absolute right-0 mt-2 w-56 bg-white rounded-xl shadow-xl border border-gray-200 py-2 text-gray-800 z-50"
+                >
+                  <div className="px-4 py-2 border-b border-gray-100">
+                    <p className="text-sm font-semibold leading-tight">{userName || 'Signed in'}</p>
+                    {teams.length > 0 && (
+                      <p className="text-xs text-gray-500 mt-0.5">
+                        {teams.join(', ')} team{teams.length > 1 ? 's' : ''}
+                      </p>
+                    )}
+                  </div>
+                  <button
+                    role="menuitem"
+                    onClick={() => {
+                      setShowUserMenu(false)
+                      setShowSettings(true)
+                    }}
+                    className="w-full flex items-center gap-2 px-4 py-2 text-sm hover:bg-gray-100 transition-colors text-left"
+                  >
+                    <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                    </svg>
+                    Settings
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </header>
@@ -360,7 +505,7 @@ export default function DashboardPage() {
       <div className="flex-1 flex flex-col max-w-3xl mx-auto w-full min-h-0">
         {/* Date nav + table header — fixed in flex layout, not scrolled */}
         <div className="flex-shrink-0 bg-white shadow-sm">
-          <DateNav date={selectedDate} onNavigate={navigateDate} onJumpToToday={jumpToToday} onSelectDate={selectDate} />
+          <DateNav date={selectedDate} onNavigate={navigateDate} onSelectDate={selectDate} />
           <div className="flex items-center px-4 py-2 bg-gray-50 border-b border-gray-200 text-xs font-bold uppercase tracking-wider text-gray-400">
             <div className="flex-1">Task</div>
             <div className="w-20 text-center">Hours</div>
@@ -444,6 +589,8 @@ export default function DashboardPage() {
                     onToggleExpand={handleToggleExpand}
                     getCollapsedExistingHours={getCollapsedExistingHours}
                     showEstimate={false}
+                    canEdit={canEditSelectedDate}
+                    onEdit={handleEditTask}
                   />
                 ))}
               </section>
@@ -467,6 +614,8 @@ export default function DashboardPage() {
                     onToggleExpand={handleToggleExpand}
                     getCollapsedExistingHours={getCollapsedExistingHours}
                     showEstimate={true}
+                    canEdit={canEditSelectedDate}
+                    onEdit={handleEditTask}
                   />
                 ))}
               </section>
@@ -522,6 +671,17 @@ export default function DashboardPage() {
           }}
         />
       )}
+
+      {/* Edit worklogs modal */}
+      {editingTask && (
+        <WorklogEditModal
+          taskId={editingTask.id}
+          taskTitle={editingTask.title}
+          date={selectedDate}
+          onClose={() => setEditingTask(null)}
+          onChanged={(delta) => handleWorklogChanged(editingTask.id, delta)}
+        />
+      )}
     </div>
   )
 }
@@ -544,9 +704,11 @@ interface TaskSectionProps {
   expandedIds: Set<string>
   expandingTaskId: string | null
   showEstimate: boolean
+  canEdit?: boolean
   onHoursChange: (id: string, v: string) => void
   onCommentChange: (id: string, v: string) => void
   onToggleExpand: (id: string) => void
+  onEdit?: (id: string) => void
   getCollapsedExistingHours: (task: JiraTask) => number
 }
 
@@ -558,15 +720,32 @@ function TaskSection({
   expandedIds,
   expandingTaskId,
   showEstimate,
+  canEdit,
   onHoursChange,
   onCommentChange,
   onToggleExpand,
+  onEdit,
   getCollapsedExistingHours,
 }: TaskSectionProps) {
   const isExpanded = expandedIds.has(task.id)
   const existingHours = isExpanded
     ? (existingWorklogs[task.id] ?? 0)
     : getCollapsedExistingHours(task)
+  const ownLoggedHours = existingWorklogs[task.id] ?? 0
+
+  // When collapsed, surface the sum of unsaved hours entered on subtasks so the
+  // user doesn't lose sight of pending children. Shown as a small badge below
+  // the input; the parent's own input remains editable for its own time.
+  let pendingChildHours = 0
+  if (!isExpanded && task.isExpandable) {
+    const childIds = new Set<string>([
+      ...(task.subtasks ?? []).map((s) => s.id),
+      ...(task.subtaskKeys ?? []),
+    ])
+    for (const id of childIds) {
+      pendingChildHours += parseFloat(hours[id] ?? '') || 0
+    }
+  }
 
   return (
     <>
@@ -578,10 +757,14 @@ function TaskSection({
         hours={hours[task.id] ?? ''}
         comment={comments[task.id] ?? ''}
         existingHours={existingHours}
+        ownLoggedHours={ownLoggedHours}
+        pendingChildHours={pendingChildHours}
         showEstimate={showEstimate}
+        canEdit={canEdit}
         onHoursChange={onHoursChange}
         onCommentChange={onCommentChange}
         onToggleExpand={onToggleExpand}
+        onEdit={onEdit}
       />
       {task.isExpandable && isExpanded && task.subtasks?.map((sub) => (
         <TaskRow
@@ -591,8 +774,11 @@ function TaskSection({
           hours={hours[sub.id] ?? ''}
           comment={comments[sub.id] ?? ''}
           existingHours={existingWorklogs[sub.id] ?? 0}
+          ownLoggedHours={existingWorklogs[sub.id] ?? 0}
+          canEdit={canEdit}
           onHoursChange={onHoursChange}
           onCommentChange={onCommentChange}
+          onEdit={onEdit}
         />
       ))}
     </>

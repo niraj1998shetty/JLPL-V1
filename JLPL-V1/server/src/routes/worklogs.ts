@@ -11,6 +11,20 @@ function extractJiraMessage(data: unknown): string {
   return JSON.stringify(data)
 }
 
+function handleJiraError(err: unknown, res: import('express').Response, label: string): void {
+  const axiosErr = err as { response?: { status?: number; data?: unknown }; message?: string }
+  const status = axiosErr?.response?.status
+  const jiraMsg = extractJiraMessage(axiosErr?.response?.data)
+  console.error(`[${label}] Jira error`, status ?? axiosErr?.message, jiraMsg)
+  if (status === 401 || status === 403) {
+    res.status(401).json({ error: 'Unauthorized.' })
+  } else if (status === 404) {
+    res.status(404).json({ error: 'Worklog or issue not found in Jira.' })
+  } else {
+    res.status(502).json({ error: `Jira API error${jiraMsg ? ': ' + jiraMsg : ''}` })
+  }
+}
+
 const router = Router()
 
 // GET /worklogs?date=YYYY-MM-DD
@@ -45,15 +59,7 @@ router.get('/', requireAuth, async (req, res) => {
     )
     res.json(entries)
   } catch (err: unknown) {
-    const axiosErr = err as { response?: { status?: number; data?: unknown }; message?: string }
-    const status = axiosErr?.response?.status
-    const jiraMsg = extractJiraMessage(axiosErr?.response?.data)
-    console.error('[worklogs GET] Jira error', status ?? axiosErr?.message, jiraMsg)
-    if (status === 401 || status === 403) {
-      res.status(401).json({ error: 'Unauthorized.' })
-    } else {
-      res.status(502).json({ error: `Jira API error${jiraMsg ? ': ' + jiraMsg : ''}` })
-    }
+    handleJiraError(err, res, 'worklogs GET')
   }
 })
 
@@ -81,17 +87,56 @@ router.post('/', requireAuth, async (req, res) => {
     await client.logWorkEntries(entries)
     res.status(204).send()
   } catch (err: unknown) {
-    const axiosErr = err as { response?: { status?: number; data?: unknown }; message?: string }
-    const status = axiosErr?.response?.status
-    const jiraMsg = extractJiraMessage(axiosErr?.response?.data)
-    console.error('[worklogs POST] Jira error', status ?? axiosErr?.message, jiraMsg)
-    if (status === 401 || status === 403) {
-      res.status(401).json({ error: 'Unauthorized.' })
-    } else if (status === 404) {
-      res.status(404).json({ error: 'One or more issues not found in Jira.' })
-    } else {
-      res.status(502).json({ error: `Jira API error${jiraMsg ? ': ' + jiraMsg : ''}` })
-    }
+    handleJiraError(err, res, 'worklogs POST')
+  }
+})
+
+// GET /worklogs/task/:taskId?date=YYYY-MM-DD
+// Returns the current user's worklog entries for this task on this date, with IDs.
+router.get('/task/:taskId', requireAuth, async (req, res) => {
+  const dateStr = req.query.date as string
+  const { taskId } = req.params
+  if (!dateStr || !/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+    res.status(400).json({ error: 'Query param "date" must be YYYY-MM-DD.' })
+    return
+  }
+  const client = new JiraClient(req.pat!)
+  try {
+    const myself = await client.getMyself()
+    const myUserId = myself.accountId ?? myself.name ?? myself.key ?? ''
+    const entries = await client.getTaskWorklogsOnDate(taskId, dateStr, myUserId)
+    res.json(entries)
+  } catch (err: unknown) {
+    handleJiraError(err, res, 'worklogs GET task')
+  }
+})
+
+// PUT /worklogs/task/:taskId/:worklogId  Body: { hours, date, comment? }
+router.put('/task/:taskId/:worklogId', requireAuth, async (req, res) => {
+  const { taskId, worklogId } = req.params
+  const { hours, comment, date } = req.body as { hours?: number; comment?: string; date?: string }
+  if (typeof hours !== 'number' || hours <= 0 || !date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    res.status(400).json({ error: 'Body must include hours > 0 and date YYYY-MM-DD.' })
+    return
+  }
+  const client = new JiraClient(req.pat!)
+  try {
+    await client.updateWorklog(taskId, worklogId, hours, date, comment)
+    res.status(204).send()
+  } catch (err: unknown) {
+    handleJiraError(err, res, 'worklogs PUT')
+  }
+})
+
+// DELETE /worklogs/task/:taskId/:worklogId
+router.delete('/task/:taskId/:worklogId', requireAuth, async (req, res) => {
+  const { taskId, worklogId } = req.params
+  const client = new JiraClient(req.pat!)
+  try {
+    await client.deleteWorklog(taskId, worklogId)
+    res.status(204).send()
+  } catch (err: unknown) {
+    handleJiraError(err, res, 'worklogs DELETE')
   }
 })
 

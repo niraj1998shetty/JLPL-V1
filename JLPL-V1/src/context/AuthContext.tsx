@@ -20,7 +20,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [state, setState] = useState<AuthState>(() => ({
     isAuthenticated: jiraService.hasPat(),
     teams: jiraService.getTeams(),
-    userName: '',
+    userName: jiraService.getUserName(),
   }))
 
   const login = useCallback(async (pat: string, teams: JiraTeam[]) => {
@@ -30,6 +30,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
     jiraService.setPat(pat)
     jiraService.setTeams(teams)
+    jiraService.setUserName(result.name ?? '')
     setState({ isAuthenticated: true, teams, userName: result.name ?? '' })
   }, [])
 

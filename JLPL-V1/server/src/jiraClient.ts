@@ -31,6 +31,8 @@ export interface AppTimeEntry {
   hours: number
   date: string
   comment?: string
+  id?: string         // worklog id
+  started?: string    // original Jira-format started timestamp
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────
@@ -345,6 +347,8 @@ export class JiraClient {
           hours: Math.round((wl.timeSpentSeconds / 3600) * 100) / 100,
           date: dateStr,
           comment: getWorklogComment(wl),
+          id: wl.id,
+          started: wl.started,
         })
       }
     }
@@ -355,5 +359,45 @@ export class JiraClient {
     entries: Array<{ taskId: string; hours: number; date: string; comment?: string }>
   ): Promise<void> {
     await Promise.all(entries.map((e) => this.logWork(e.taskId, e.hours, e.date, e.comment)))
+  }
+
+  // ── Edit / delete worklog entries ──────────────────────────────────────
+
+  async getTaskWorklogsOnDate(issueKey: string, dateStr: string, myUserId: string): Promise<AppTimeEntry[]> {
+    const worklogs = await this.getWorklogs(issueKey)
+    const entries: AppTimeEntry[] = []
+    for (const wl of worklogs) {
+      if (myUserId && userIdentifier(wl.author) !== myUserId) continue
+      if (!wl.started.startsWith(dateStr)) continue
+      entries.push({
+        taskId: issueKey,
+        hours: Math.round((wl.timeSpentSeconds / 3600) * 100) / 100,
+        date: dateStr,
+        comment: getWorklogComment(wl),
+        id: wl.id,
+        started: wl.started,
+      })
+    }
+    return entries
+  }
+
+  async updateWorklog(
+    issueKey: string,
+    worklogId: string,
+    hours: number,
+    dateStr: string,
+    comment?: string
+  ): Promise<void> {
+    const body: Record<string, unknown> = {
+      timeSpent: hoursToJiraTimeSpent(hours),
+      started: `${dateStr}T09:00:00.000+0000`,
+      // Empty string clears the comment in Jira v2
+      comment: comment?.trim() ?? '',
+    }
+    await this.http.put(`/issue/${issueKey}/worklog/${worklogId}`, body)
+  }
+
+  async deleteWorklog(issueKey: string, worklogId: string): Promise<void> {
+    await this.http.delete(`/issue/${issueKey}/worklog/${worklogId}`)
   }
 }
