@@ -12,6 +12,7 @@ export interface JiraIssueFields {
   summary: string
   issuetype: { name: string; subtask: boolean }
   status: { name: string }
+  updated: string | null              // ISO datetime string
   timeoriginalestimate: number | null   // seconds
   timeestimate: number | null           // remaining seconds
   timespent: number | null              // logged seconds (own fields)

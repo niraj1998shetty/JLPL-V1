@@ -3,6 +3,25 @@ interface EstimatePanelProps {
   remainingHours: number | null
   totalLoggedHours: number | null
   storyPoints: number | null
+  updatedAt: string | null
+}
+
+function formatRelativeTime(iso: string): string {
+  const ts = Date.parse(iso)
+  if (Number.isNaN(ts)) return ''
+  const diffMs = Date.now() - ts
+  const diffSec = Math.round(diffMs / 1000)
+  if (diffSec < 60) return 'just now'
+  const diffMin = Math.round(diffSec / 60)
+  if (diffMin < 60) return `${diffMin} minute${diffMin === 1 ? '' : 's'} ago`
+  const diffHr = Math.round(diffMin / 60)
+  if (diffHr < 24) return `${diffHr} hour${diffHr === 1 ? '' : 's'} ago`
+  const diffDay = Math.round(diffHr / 24)
+  if (diffDay < 30) return `${diffDay} day${diffDay === 1 ? '' : 's'} ago`
+  const diffMon = Math.round(diffDay / 30)
+  if (diffMon < 12) return `${diffMon} month${diffMon === 1 ? '' : 's'} ago`
+  const diffYr = Math.round(diffMon / 12)
+  return `${diffYr} year${diffYr === 1 ? '' : 's'} ago`
 }
 
 function HoursBar({
@@ -36,12 +55,14 @@ export default function EstimatePanel({
   remainingHours,
   totalLoggedHours,
   storyPoints,
+  updatedAt,
 }: EstimatePanelProps) {
   const hasEstimate = estimatedHours !== null && estimatedHours > 0
   const hasLogged = totalLoggedHours !== null && totalLoggedHours > 0
   const hasStoryPoints = storyPoints !== null
+  const hasUpdated = !!updatedAt
 
-  if (!hasEstimate && !hasLogged && !hasStoryPoints) return null
+  if (!hasEstimate && !hasLogged && !hasStoryPoints && !hasUpdated) return null
 
   const spentHours = hasEstimate && remainingHours !== null
     ? Math.max(0, estimatedHours! - remainingHours)
@@ -103,6 +124,17 @@ export default function EstimatePanel({
         <div className="flex items-center justify-between text-xs">
           <span className="text-gray-500">Story points</span>
           <span className="font-semibold text-jira-blue">{storyPoints}</span>
+        </div>
+      )}
+      {hasUpdated && (
+        <div className="flex items-center justify-between text-xs">
+          <span className="text-gray-500">Updated</span>
+          <span
+            className="font-medium text-gray-700"
+            title={new Date(updatedAt!).toLocaleString()}
+          >
+            {formatRelativeTime(updatedAt!)}
+          </span>
         </div>
       )}
     </div>

@@ -13,6 +13,7 @@ export interface JiraTask {
   remainingHours?: number
   totalLoggedHours?: number
   storyPoints?: number
+  updatedAt?: string
 }
 
 export interface JiraTimeEntry {

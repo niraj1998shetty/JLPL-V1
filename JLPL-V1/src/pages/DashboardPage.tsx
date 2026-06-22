@@ -212,6 +212,27 @@ export default function DashboardPage() {
     resetSession()
   }
 
+  function jumpToToday() {
+    if (isToday(selectedDate)) return
+    setSelectedDate(new Date())
+    resetSession()
+  }
+
+  function selectDate(date: Date) {
+    // Don't allow future dates
+    const today = new Date()
+    const target = date > today ? today : date
+    if (
+      target.getFullYear() === selectedDate.getFullYear() &&
+      target.getMonth() === selectedDate.getMonth() &&
+      target.getDate() === selectedDate.getDate()
+    ) {
+      return
+    }
+    setSelectedDate(target)
+    resetSession()
+  }
+
   function resetSession() {
     setHours((prev) => {
       const next: HoursMap = {}
@@ -225,6 +246,39 @@ export default function DashboardPage() {
     })
     setExistingWorklogs({})
     setSuccessMsg('')
+  }
+
+  // After a successful submit, bump totalLoggedHours and updatedAt locally so
+  // the info popup reflects the new state without a page reload. Jira's
+  // aggregatetimespent rolls subtask logs up into the parent, so we mirror that.
+  function applyOptimisticLogs(entries: JiraTimeEntry[]) {
+    const now = new Date().toISOString()
+    const hoursById: Record<string, number> = {}
+    for (const e of entries) hoursById[e.taskId] = (hoursById[e.taskId] ?? 0) + e.hours
+
+    function bump(t: JiraTask): JiraTask {
+      const bumpedSubs = t.subtasks?.map(bump)
+      const ownAdd = hoursById[t.id] ?? 0
+
+      // Aggregate hours that belong under this task: own + every descendant we know about,
+      // de-duped across subtasks[] and subtaskKeys[].
+      const descendantIds = new Set<string>([
+        ...(t.subtasks ?? []).map((s) => s.id),
+        ...(t.subtaskKeys ?? []),
+      ])
+      let aggregateAdd = ownAdd
+      for (const id of descendantIds) aggregateAdd += hoursById[id] ?? 0
+
+      if (aggregateAdd === 0 && bumpedSubs === t.subtasks) return t
+      return {
+        ...t,
+        totalLoggedHours: (t.totalLoggedHours ?? 0) + aggregateAdd,
+        updatedAt: aggregateAdd > 0 ? now : t.updatedAt,
+        subtasks: bumpedSubs,
+      }
+    }
+
+    setTasks((prev) => prev.map(bump))
   }
 
   async function handleSubmit() {
@@ -242,6 +296,7 @@ export default function DashboardPage() {
         }))
 
       await jiraService.logWork({ date: formatDateForApi(selectedDate), entries })
+      applyOptimisticLogs(entries)
       resetSession()
       setSuccessMsg(`Successfully logged ${sessionHours.toFixed(2).replace(/\.?0+$/, '')}h`)
       await loadWorklogs(formatDateForApi(selectedDate))
@@ -305,7 +360,7 @@ export default function DashboardPage() {
       <div className="flex-1 flex flex-col max-w-3xl mx-auto w-full min-h-0">
         {/* Date nav + table header — fixed in flex layout, not scrolled */}
         <div className="flex-shrink-0 bg-white shadow-sm">
-          <DateNav date={selectedDate} onNavigate={navigateDate} />
+          <DateNav date={selectedDate} onNavigate={navigateDate} onJumpToToday={jumpToToday} onSelectDate={selectDate} />
           <div className="flex items-center px-4 py-2 bg-gray-50 border-b border-gray-200 text-xs font-bold uppercase tracking-wider text-gray-400">
             <div className="flex-1">Task</div>
             <div className="w-20 text-center">Hours</div>

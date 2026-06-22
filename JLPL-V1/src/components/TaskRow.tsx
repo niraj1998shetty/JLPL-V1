@@ -45,7 +45,8 @@ export default function TaskRow({
     (task.estimatedHours !== undefined ||
       task.remainingHours !== undefined ||
       task.totalLoggedHours !== undefined ||
-      task.storyPoints !== undefined)
+      task.storyPoints !== undefined ||
+      task.updatedAt !== undefined)
 
   function handleInfoClick(e: React.MouseEvent) {
     e.stopPropagation()
@@ -230,6 +231,7 @@ export default function TaskRow({
               remainingHours={task.remainingHours ?? null}
               totalLoggedHours={task.totalLoggedHours ?? null}
               storyPoints={task.storyPoints ?? null}
+              updatedAt={task.updatedAt ?? null}
             />
           </div>,
           document.body
