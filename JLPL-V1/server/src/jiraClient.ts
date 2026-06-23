@@ -350,6 +350,16 @@ export class JiraClient {
     return issues.map((i) => mapIssueToTask(i, false))
   }
 
+  // Fetch a single arbitrary issue and structure it like an assigned task so a
+  // user can log time against a task that isn't in their common/assigned list
+  // (e.g. a PR review against another team's ticket).
+  async getTaskById(key: string): Promise<AppTask> {
+    const issue = await this.fetchIssue(key)
+    // Use the issue's own type only — don't infer 'test' from subtask titles the
+    // way assigned tasks do, since the user is logging against this exact task.
+    return mapIssueToTask(issue, false)
+  }
+
   async getExistingWorklogs(allTaskKeys: string[], dateStr: string, myUserId: string): Promise<AppTimeEntry[]> {
     if (allTaskKeys.length === 0) return []
 

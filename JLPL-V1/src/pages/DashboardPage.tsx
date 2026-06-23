@@ -65,6 +65,12 @@ export default function DashboardPage() {
   // Summaries keyed by task id — a lightweight fallback used to still surface logged
   // hours if the structured fetch above fails, so the day's total always reconciles.
   const [loggedTaskSummaries, setLoggedTaskSummaries] = useState<Record<string, string>>({})
+  // Tasks the user manually added via "Log in Other Task" — tasks not in their
+  // common/assigned list that they want to log time against (e.g. a PR review on
+  // another team's ticket). Cleared on date change / after submit.
+  const [otherTasks, setOtherTasks] = useState<JiraTask[]>([])
+  const [addingOtherTask, setAddingOtherTask] = useState(false)
+  const [otherTaskError, setOtherTaskError] = useState('')
 
   const [isLoadingTasks, setIsLoadingTasks] = useState(true)
   const [isLoadingWorklogs, setIsLoadingWorklogs] = useState(false)
@@ -148,6 +154,18 @@ export default function DashboardPage() {
     }))
 
   const extraLoggedTasks: JiraTask[] = [...structuredExtra, ...fallbackExtra]
+
+  // "Other Tasks" section: tasks the user manually added (not already in the
+  // common/assigned list) plus any task they logged time on this day that isn't
+  // assigned to them — so previously-logged "other" tasks keep showing after a
+  // reload. De-duped so a manually-added task that also has logged hours appears
+  // once.
+  const manualOtherTasks = otherTasks.filter((t) => !knownTaskIds.has(t.id))
+  const manualOtherIds = new Set(manualOtherTasks.map((t) => t.id))
+  const otherSectionTasks: JiraTask[] = [
+    ...manualOtherTasks,
+    ...extraLoggedTasks.filter((t) => !manualOtherIds.has(t.id)),
+  ]
 
   const sessionHours = Object.values(hours).reduce<number>(
     (sum, v) => sum + (parseFloat(v) || 0),
@@ -238,7 +256,9 @@ export default function DashboardPage() {
   const handleToggleExpand = useCallback(
     async (taskId: string) => {
       const task =
-        tasks.find((t) => t.id === taskId) ?? loggedTasks.find((t) => t.id === taskId)
+        tasks.find((t) => t.id === taskId) ??
+        loggedTasks.find((t) => t.id === taskId) ??
+        otherTasks.find((t) => t.id === taskId)
       if (!task) return
 
       setExpandedIds((prev) => {
@@ -261,6 +281,7 @@ export default function DashboardPage() {
             prev.map((t) => (t.id === taskId ? { ...t, subtasks } : t))
           setTasks(withSubtasks)
           setLoggedTasks(withSubtasks)
+          setOtherTasks(withSubtasks)
           setHours((prev) => {
             const next = { ...prev }
             for (const s of subtasks) if (!(s.id in next)) next[s.id] = ''
@@ -278,7 +299,7 @@ export default function DashboardPage() {
         }
       }
     },
-    [tasks, loggedTasks, expandedIds]
+    [tasks, loggedTasks, otherTasks, expandedIds]
   )
 
   function getCollapsedExistingHours(task: JiraTask): number {
@@ -340,7 +361,7 @@ export default function DashboardPage() {
   const canEditSelectedDate = isEditableDate(selectedDate)
 
   function findTaskById(id: string): JiraTask | null {
-    for (const t of [...tasks, ...loggedTasks]) {
+    for (const t of [...tasks, ...loggedTasks, ...otherTasks]) {
       if (t.id === id) return t
       for (const sub of t.subtasks ?? []) {
         if (sub.id === id) return sub
@@ -398,6 +419,47 @@ export default function DashboardPage() {
     })
   }
 
+  // Adds a task entered via "Log in Other Task". Validates the key format,
+  // guards against duplicates, then fetches the structured task from Jira so it
+  // renders like an assigned task (test badge, expandable subtasks, estimates).
+  async function handleAddOtherTask(rawId: string): Promise<boolean> {
+    const taskId = rawId.trim().toUpperCase()
+    if (!/^[A-Z][A-Z0-9]*-\d+$/.test(taskId)) {
+      setOtherTaskError('Enter a valid Task ID, e.g. DMO-13745.')
+      return false
+    }
+    if (knownTaskIds.has(taskId)) {
+      setOtherTaskError('That task is already in your Common or Assigned list.')
+      return false
+    }
+    if (otherTasks.some((t) => t.id === taskId)) {
+      setOtherTaskError('That task has already been added.')
+      return false
+    }
+    setAddingOtherTask(true)
+    setOtherTaskError('')
+    try {
+      const task = await jiraService.getTaskById(taskId)
+      setOtherTasks((prev) => (prev.some((t) => t.id === task.id) ? prev : [...prev, task]))
+      setHours((prev) => (task.id in prev ? prev : { ...prev, [task.id]: '' }))
+      setComments((prev) => (task.id in prev ? prev : { ...prev, [task.id]: '' }))
+      return true
+    } catch (err: unknown) {
+      const status = (err as { response?: { status?: number } })?.response?.status
+      if (status === 401) {
+        setOtherTaskError('Session expired. Please log in again.')
+        logout()
+      } else if (status === 404) {
+        setOtherTaskError(`Task ${taskId} was not found in Jira.`)
+      } else {
+        setOtherTaskError('Could not load that task. Check the ID and try again.')
+      }
+      return false
+    } finally {
+      setAddingOtherTask(false)
+    }
+  }
+
   function resetSession() {
     setHours((prev) => {
       const next: HoursMap = {}
@@ -412,6 +474,8 @@ export default function DashboardPage() {
     setExistingWorklogs({})
     setLoggedTasks([])
     setLoggedTaskSummaries({})
+    setOtherTasks([])
+    setOtherTaskError('')
     setSuccessMsg('')
   }
 
@@ -486,7 +550,8 @@ export default function DashboardPage() {
               </svg>
             </div>
             <div>
-              <h1 className="font-bold text-sm leading-tight">Jira Log Private LTD</h1>
+              <h1 className="font-bold text-sm leading-tight hidden sm:block">Jira Logging Pvt Ltd</h1>
+              <h1 className="font-bold text-sm leading-tight sm:hidden">JLPL</h1>
               <span className="text-blue-200 text-xs">{teams.join(', ')} team{teams.length > 1 ? 's' : ''}</span>
             </div>
           </div>
@@ -500,23 +565,6 @@ export default function DashboardPage() {
                 Today
               </button>
             )}
-            <button
-              onClick={() => window.open('https://jira.eg.dk/secure/jiraerpOverviewPageWebworkAction.jspa', '_blank')}
-              className="px-3 py-1.5 rounded-lg hover:bg-white/10 text-blue-200 hover:text-white transition-colors text-sm font-medium"
-              title="ERP"
-            >
-              ERP
-            </button>
-            {/* <button
-              onClick={() => {
-                const weekOf = formatWeekOfDate(getMondayOfCurrentWeek())
-                window.open(`https://5177942.app.netsuite.com/app/site/hosting/scriptlet.nl?script=21365&deploy=1&compid=5177942&empid=3585269&weekof=${weekOf}&whence=`, '_blank')
-              }}
-              className="p-1.5 rounded-lg hover:bg-white/10 text-blue-200 hover:text-white transition-colors"
-              title="NetSuite App"
-            >
-              NetSuite
-            </button> */}
             <div ref={userMenuRef} className="relative">
               <button
                 onClick={() => setShowUserMenu((v) => !v)}
@@ -553,6 +601,32 @@ export default function DashboardPage() {
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
                     </svg>
                     Settings
+                  </button>
+                  <button
+                    role="menuitem"
+                    onClick={() => {
+                      setShowUserMenu(false)
+                      window.open('https://jira.eg.dk/secure/jiraerpOverviewPageWebworkAction.jspa', '_blank')
+                    }}
+                    className="w-full flex items-center gap-2 px-4 py-2 text-sm hover:bg-gray-100 transition-colors text-left border-t border-gray-100"
+                  >
+                    <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                    </svg>
+                    Go to ERP
+                  </button>
+                  <button
+                    role="menuitem"
+                    onClick={() => {
+                      setShowUserMenu(false)
+                      window.open('https://5177942.app.netsuite.com/app/center/card.nl?sc=-46&whence=', '_blank')
+                    }}
+                    className="w-full flex items-center gap-2 px-4 py-2 text-sm hover:bg-gray-100 transition-colors text-left"
+                  >
+                    <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                    </svg>
+                    Go to NetSuite
                   </button>
                 </div>
               )}
@@ -656,10 +730,8 @@ export default function DashboardPage() {
               </section>
             )}
 
-            {/* Assigned Tasks — includes tasks logged this day that aren't in the
-                active list (e.g. an old task logged a month ago) so the visible
-                hours reconcile with the day's total. */}
-            {(assignedTasks.length > 0 || extraLoggedTasks.length > 0) && (
+            {/* Assigned Tasks */}
+            {assignedTasks.length > 0 && (
               <section>
                 <GroupHeader label="Assigned Tasks" />
                 {assignedTasks.map((task) => (
@@ -680,7 +752,17 @@ export default function DashboardPage() {
                     onEdit={handleEditTask}
                   />
                 ))}
-                {extraLoggedTasks.map((task) => (
+              </section>
+            )}
+
+            {/* Other Tasks — tasks the user manually added to log against plus any
+                task they logged time on this day that isn't in their common/assigned
+                list (e.g. an old task, or a PR review on another team's ticket), so
+                the visible hours reconcile with the day's total. */}
+            {(otherSectionTasks.length > 0 || canEditSelectedDate) && (
+              <section>
+                <GroupHeader label="Other Tasks" />
+                {otherSectionTasks.map((task) => (
                   <TaskSection
                     key={task.id}
                     task={task}
@@ -698,10 +780,18 @@ export default function DashboardPage() {
                     onEdit={handleEditTask}
                   />
                 ))}
+                {canEditSelectedDate && (
+                  <OtherTaskAdder
+                    onAdd={handleAddOtherTask}
+                    isAdding={addingOtherTask}
+                    error={otherTaskError}
+                    onClearError={() => setOtherTaskError('')}
+                  />
+                )}
               </section>
             )}
 
-            {commonTasks.length === 0 && assignedTasks.length === 0 && extraLoggedTasks.length === 0 && (
+            {commonTasks.length === 0 && assignedTasks.length === 0 && otherSectionTasks.length === 0 && (
               <div className="text-center py-16 text-gray-400">
                 <svg className="w-12 h-12 mx-auto mb-3 opacity-30" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
@@ -772,6 +862,102 @@ function GroupHeader({ label }: { label: string }) {
   return (
     <div className="px-4 py-1.5 text-[11px] font-bold uppercase tracking-widest text-gray-400 bg-gray-50 border-b border-gray-200">
       {label}
+    </div>
+  )
+}
+
+// "Log for Other Task" control: a button that expands into a Task ID input so the
+// user can add a task that isn't in their common/assigned list.
+function OtherTaskAdder({
+  onAdd,
+  isAdding,
+  error,
+  onClearError,
+}: {
+  onAdd: (taskId: string) => Promise<boolean>
+  isAdding: boolean
+  error: string
+  onClearError: () => void
+}) {
+  const [open, setOpen] = useState(false)
+  const [value, setValue] = useState('')
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    if (open) inputRef.current?.focus()
+  }, [open])
+
+  function close() {
+    setOpen(false)
+    setValue('')
+    onClearError()
+  }
+
+  async function submit() {
+    if (!value.trim() || isAdding) return
+    const ok = await onAdd(value)
+    if (ok) {
+      setValue('')
+      setOpen(false)
+    }
+  }
+
+  if (!open) {
+    return (
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="flex items-center gap-1.5 w-full px-4 py-2.5 text-sm font-medium text-jira-blue hover:bg-blue-50 transition-colors border-b border-gray-100"
+      >
+        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+        </svg>
+        Log for Other Task
+      </button>
+    )
+  }
+
+  return (
+    <div className="px-4 py-3 border-b border-gray-100 bg-blue-50/40">
+      <div className="flex items-center gap-2">
+        <input
+          ref={inputRef}
+          type="text"
+          value={value}
+          onChange={(e) => {
+            setValue(e.target.value)
+            if (error) onClearError()
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') submit()
+            if (e.key === 'Escape') close()
+          }}
+          placeholder="Enter Task ID (e.g. DMO-13745)"
+          className="flex-1 px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-jira-blue focus:border-transparent bg-white uppercase placeholder:normal-case"
+        />
+        <button
+          type="button"
+          onClick={submit}
+          disabled={!value.trim() || isAdding}
+          className="btn-primary text-sm px-4 py-2 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5"
+        >
+          {isAdding && (
+            <svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+            </svg>
+          )}
+          Add
+        </button>
+        <button
+          type="button"
+          onClick={close}
+          className="btn-secondary text-sm px-3 py-2"
+        >
+          Cancel
+        </button>
+      </div>
+      {error && <p className="mt-2 text-xs text-red-600">{error}</p>}
     </div>
   )
 }

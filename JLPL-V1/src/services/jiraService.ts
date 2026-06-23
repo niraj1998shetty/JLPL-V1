@@ -201,6 +201,12 @@ class JiraService {
     return res.data
   }
 
+  // Fetch a single arbitrary task by key (for the "Log in Other Task" feature).
+  async getTaskById(taskId: string): Promise<JiraTask> {
+    const res = await this.client.get<JiraTask>(`/tasks/${encodeURIComponent(taskId)}`)
+    return res.data
+  }
+
   async getExistingWorklogs(dateStr: string): Promise<JiraTimeEntry[]> {
     const res = await this.client.get<JiraTimeEntry[]>('/worklogs', {
       params: { date: dateStr },

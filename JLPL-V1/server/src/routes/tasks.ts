@@ -56,6 +56,24 @@ router.get('/:id/subtasks', requireAuth, async (req, res) => {
   }
 })
 
+// GET /tasks/:id
+// Fetch a single arbitrary task by key so the user can log time against a task
+// that isn't in their common/assigned list (the "Other Tasks" feature).
+router.get('/:id', requireAuth, async (req, res) => {
+  const client = new JiraClient(req.pat!)
+  const id = req.params.id.toUpperCase()
+  if (!/^[A-Z][A-Z0-9]*-\d+$/.test(id)) {
+    res.status(400).json({ error: 'Invalid task ID. Expected a key like DMO-13745.' })
+    return
+  }
+  try {
+    const task = await client.getTaskById(id)
+    res.json(task)
+  } catch (err: unknown) {
+    handleJiraError(err, res)
+  }
+})
+
 function extractJiraMessage(data: unknown): string {
   if (!data) return ''
   if (typeof data === 'string') return data
