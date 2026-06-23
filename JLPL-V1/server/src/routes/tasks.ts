@@ -26,6 +26,25 @@ router.get('/assigned', requireAuth, async (req, res) => {
   }
 })
 
+// GET /tasks/logged?date=YYYY-MM-DD
+// Tasks the user logged time on that day, structured like assigned tasks
+// (test badge, expandable subtasks). Lets old logged tasks render fully.
+router.get('/logged', requireAuth, async (req, res) => {
+  const dateStr = req.query.date as string
+  if (!dateStr || !/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+    res.status(400).json({ error: 'Query param "date" must be YYYY-MM-DD.' })
+    return
+  }
+  const client = new JiraClient(req.pat!)
+  const team = req.team ?? 'DMO'
+  try {
+    const tasks = await client.getLoggedTasks(dateStr, team)
+    res.json(tasks)
+  } catch (err: unknown) {
+    handleJiraError(err, res)
+  }
+})
+
 router.get('/:id/subtasks', requireAuth, async (req, res) => {
   const client = new JiraClient(req.pat!)
   const { id } = req.params

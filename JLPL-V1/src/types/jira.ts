@@ -23,6 +23,7 @@ export interface JiraTimeEntry {
   comment?: string
   id?: string
   started?: string
+  taskSummary?: string
 }
 
 export interface JiraSubmitPayload {

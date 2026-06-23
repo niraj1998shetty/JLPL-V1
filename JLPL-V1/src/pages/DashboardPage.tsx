@@ -58,6 +58,13 @@ export default function DashboardPage() {
   const [hours, setHours] = useState<HoursMap>({})
   const [comments, setComments] = useState<CommentMap>({})
   const [existingWorklogs, setExistingWorklogs] = useState<Record<string, number>>({})
+  // Fully-structured tasks the user logged time on this day (test badge, expandable
+  // subtasks, estimates), so an old task logged a month ago renders like an assigned
+  // task instead of a bare row.
+  const [loggedTasks, setLoggedTasks] = useState<JiraTask[]>([])
+  // Summaries keyed by task id — a lightweight fallback used to still surface logged
+  // hours if the structured fetch above fails, so the day's total always reconciles.
+  const [loggedTaskSummaries, setLoggedTaskSummaries] = useState<Record<string, string>>({})
 
   const [isLoadingTasks, setIsLoadingTasks] = useState(true)
   const [isLoadingWorklogs, setIsLoadingWorklogs] = useState(false)
@@ -104,6 +111,43 @@ export default function DashboardPage() {
   // Derived values
   const commonTasks = tasks.filter((t) => t.isDefault)
   const assignedTasks = tasks.filter((t) => !t.isDefault)
+
+  // Tasks the user logged time on this day that aren't in the active/common list
+  // (or their subtasks). Without these, the day's total would include hours that
+  // have no visible row — e.g. an old task logged a month ago. We surface them so
+  // the visible hours reconcile with the total.
+  const knownTaskIds = new Set<string>()
+  for (const t of tasks) {
+    knownTaskIds.add(t.id)
+    for (const k of t.subtaskKeys ?? []) knownTaskIds.add(k)
+    for (const s of t.subtasks ?? []) knownTaskIds.add(s.id)
+  }
+
+  // Structured logged tasks (test badge / expandable subtasks) not already shown.
+  const structuredExtra = loggedTasks.filter((t) => !knownTaskIds.has(t.id))
+
+  // Track every id covered by the structured tasks (themselves + their subtasks)
+  // so the fallback below doesn't render a duplicate bare row for them.
+  const coveredIds = new Set(knownTaskIds)
+  for (const t of structuredExtra) {
+    coveredIds.add(t.id)
+    for (const k of t.subtaskKeys ?? []) coveredIds.add(k)
+    for (const s of t.subtasks ?? []) coveredIds.add(s.id)
+  }
+
+  // Fallback: any logged id with hours still not represented (e.g. the structured
+  // fetch failed). Rendered as a bare row from the worklog summary so no hours go
+  // invisible and the day's total always reconciles.
+  const fallbackExtra: JiraTask[] = Object.keys(existingWorklogs)
+    .filter((id) => (existingWorklogs[id] ?? 0) > 0 && !coveredIds.has(id))
+    .map((id) => ({
+      id,
+      summary: loggedTaskSummaries[id] ?? '',
+      isDefault: false,
+      isExpandable: false,
+    }))
+
+  const extraLoggedTasks: JiraTask[] = [...structuredExtra, ...fallbackExtra]
 
   const sessionHours = Object.values(hours).reduce<number>(
     (sum, v) => sum + (parseFloat(v) || 0),
@@ -168,11 +212,20 @@ export default function DashboardPage() {
     setIsLoadingWorklogs(true)
     setWorklogError('')
     try {
-      const entries = await jiraService.getExistingWorklogs(dateStr)
+      const [entries, logged] = await Promise.all([
+        jiraService.getExistingWorklogs(dateStr),
+        jiraService.getLoggedTasks(dateStr).catch(() => [] as JiraTask[]),
+      ])
       if (dateStr !== formatDateForApi(dateRef.current)) return
       const map: Record<string, number> = {}
-      for (const e of entries) map[e.taskId] = (map[e.taskId] ?? 0) + e.hours
+      const summaries: Record<string, string> = {}
+      for (const e of entries) {
+        map[e.taskId] = (map[e.taskId] ?? 0) + e.hours
+        if (e.taskSummary) summaries[e.taskId] = e.taskSummary
+      }
       setExistingWorklogs(map)
+      setLoggedTaskSummaries(summaries)
+      setLoggedTasks(logged)
     } catch {
       if (dateStr === formatDateForApi(dateRef.current)) {
         setWorklogError('Could not load existing worklogs.')
@@ -184,7 +237,8 @@ export default function DashboardPage() {
 
   const handleToggleExpand = useCallback(
     async (taskId: string) => {
-      const task = tasks.find((t) => t.id === taskId)
+      const task =
+        tasks.find((t) => t.id === taskId) ?? loggedTasks.find((t) => t.id === taskId)
       if (!task) return
 
       setExpandedIds((prev) => {
@@ -201,9 +255,12 @@ export default function DashboardPage() {
         setExpandingTaskId(taskId)
         try {
           const subtasks = await jiraService.getSubtasks(taskId)
-          setTasks((prev) =>
+          // The task may live in either list (active or logged-this-day); update both —
+          // the map is a no-op for whichever list doesn't contain it.
+          const withSubtasks = (prev: JiraTask[]) =>
             prev.map((t) => (t.id === taskId ? { ...t, subtasks } : t))
-          )
+          setTasks(withSubtasks)
+          setLoggedTasks(withSubtasks)
           setHours((prev) => {
             const next = { ...prev }
             for (const s of subtasks) if (!(s.id in next)) next[s.id] = ''
@@ -221,7 +278,7 @@ export default function DashboardPage() {
         }
       }
     },
-    [tasks, expandedIds]
+    [tasks, loggedTasks, expandedIds]
   )
 
   function getCollapsedExistingHours(task: JiraTask): number {
@@ -283,7 +340,7 @@ export default function DashboardPage() {
   const canEditSelectedDate = isEditableDate(selectedDate)
 
   function findTaskById(id: string): JiraTask | null {
-    for (const t of tasks) {
+    for (const t of [...tasks, ...loggedTasks]) {
       if (t.id === id) return t
       for (const sub of t.subtasks ?? []) {
         if (sub.id === id) return sub
@@ -294,7 +351,8 @@ export default function DashboardPage() {
 
   function handleEditTask(taskId: string) {
     const task = findTaskById(taskId)
-    const title = task ? `${task.id} ${task.summary}` : taskId
+    const summary = task?.summary ?? loggedTaskSummaries[taskId]
+    const title = summary ? `${taskId} ${summary}` : taskId
     setEditingTask({ id: taskId, title })
   }
 
@@ -352,6 +410,8 @@ export default function DashboardPage() {
       return next
     })
     setExistingWorklogs({})
+    setLoggedTasks([])
+    setLoggedTaskSummaries({})
     setSuccessMsg('')
   }
 
@@ -596,8 +656,10 @@ export default function DashboardPage() {
               </section>
             )}
 
-            {/* Assigned Tasks */}
-            {assignedTasks.length > 0 && (
+            {/* Assigned Tasks — includes tasks logged this day that aren't in the
+                active list (e.g. an old task logged a month ago) so the visible
+                hours reconcile with the day's total. */}
+            {(assignedTasks.length > 0 || extraLoggedTasks.length > 0) && (
               <section>
                 <GroupHeader label="Assigned Tasks" />
                 {assignedTasks.map((task) => (
@@ -618,10 +680,28 @@ export default function DashboardPage() {
                     onEdit={handleEditTask}
                   />
                 ))}
+                {extraLoggedTasks.map((task) => (
+                  <TaskSection
+                    key={task.id}
+                    task={task}
+                    hours={hours}
+                    comments={comments}
+                    existingWorklogs={existingWorklogs}
+                    expandedIds={expandedIds}
+                    expandingTaskId={expandingTaskId}
+                    onHoursChange={handleHoursChange}
+                    onCommentChange={handleCommentChange}
+                    onToggleExpand={handleToggleExpand}
+                    getCollapsedExistingHours={getCollapsedExistingHours}
+                    showEstimate={true}
+                    canEdit={canEditSelectedDate}
+                    onEdit={handleEditTask}
+                  />
+                ))}
               </section>
             )}
 
-            {commonTasks.length === 0 && assignedTasks.length === 0 && (
+            {commonTasks.length === 0 && assignedTasks.length === 0 && extraLoggedTasks.length === 0 && (
               <div className="text-center py-16 text-gray-400">
                 <svg className="w-12 h-12 mx-auto mb-3 opacity-30" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />

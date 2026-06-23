@@ -167,6 +167,35 @@ class JiraService {
     })
   }
 
+  async getLoggedTasks(dateStr: string): Promise<JiraTask[]> {
+    const teams = this.getTeams()
+    if (teams.length === 0) return []
+
+    const results = await Promise.allSettled(
+      teams.map((team) =>
+        this.client.get<JiraTask[]>('/tasks/logged', {
+          params: { date: dateStr },
+          headers: { 'X-Team': team },
+        })
+      )
+    )
+
+    const allTasks: JiraTask[] = []
+    results.forEach((result: PromiseSettledResult<any>) => {
+      if (result.status === 'fulfilled') {
+        allTasks.push(...(result as PromiseFulfilledResult<any>).value.data)
+      }
+    })
+
+    // Deduplicate by task ID (keep first occurrence)
+    const seen = new Set<string>()
+    return allTasks.filter((task) => {
+      if (seen.has(task.id)) return false
+      seen.add(task.id)
+      return true
+    })
+  }
+
   async getSubtasks(taskId: string): Promise<JiraTask[]> {
     const res = await this.client.get<JiraTask[]>(`/tasks/${taskId}/subtasks`)
     return res.data

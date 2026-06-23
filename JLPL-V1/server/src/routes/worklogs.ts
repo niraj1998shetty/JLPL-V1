@@ -57,6 +57,12 @@ router.get('/', requireAuth, async (req, res) => {
       dateStr,
       myUserId
     )
+
+    // Attach the issue summary so the UI can render tasks the user logged time on
+    // that day even when those tasks are no longer in their active/common task list.
+    const summaryByKey = new Map(issuesWithWorklogs.map((i) => [i.key, i.summary]))
+    for (const e of entries) e.taskSummary = summaryByKey.get(e.taskId)
+
     res.json(entries)
   } catch (err: unknown) {
     handleJiraError(err, res, 'worklogs GET')

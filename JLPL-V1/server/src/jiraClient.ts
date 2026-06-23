@@ -33,6 +33,7 @@ export interface AppTimeEntry {
   comment?: string
   id?: string         // worklog id
   started?: string    // original Jira-format started timestamp
+  taskSummary?: string // issue summary, so the UI can render tasks not in the task list
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────
@@ -208,13 +209,13 @@ export class JiraClient {
     return res.data
   }
 
-  async getIssuesWithWorklogsOnDate(dateStr: string): Promise<Array<{ key: string }>> {
+  async getIssuesWithWorklogsOnDate(dateStr: string): Promise<Array<{ key: string; summary: string }>> {
     try {
       const jql = `worklogAuthor = currentUser() AND worklogDate = "${dateStr}"`
       const res = await this.http.get<JiraSearchResponse>('/search', {
-        params: { jql, fields: 'summary', maxResults: 50 },
+        params: { jql, fields: 'summary', maxResults: 100 },
       })
-      return res.data.issues.map((i) => ({ key: i.key }))
+      return res.data.issues.map((i) => ({ key: i.key, summary: i.fields?.summary ?? '' }))
     } catch {
       return []
     }
@@ -265,8 +266,29 @@ export class JiraClient {
     const jql = 'assignee = currentUser() AND (statusCategory != Done OR updated >= -2w) ORDER BY updated DESC'
     const allIssues = await this.searchIssues(jql, 50)
     const issues = allIssues.filter((i) => !defaultIds.has(i.key))
+    return this.buildTaskTree(issues, defaultIds)
+  }
 
-    // Position map keeps Jira's updated-DESC order even after fetching missing parents.
+  // Tasks the user logged time on for a given day, structured the same way as
+  // assigned tasks (test badge, expandable subtasks, estimates). Used so an old
+  // task logged in the past still renders fully even when it's no longer assigned.
+  async getLoggedTasks(dateStr: string, team: string): Promise<AppTask[]> {
+    const defaultIds = new Set(config.jira.defaultTasks[team] ?? [])
+    const jql = `worklogAuthor = currentUser() AND worklogDate = "${dateStr}"`
+    let issues: JiraIssue[]
+    try {
+      issues = await this.searchIssues(jql, 100)
+    } catch {
+      return []
+    }
+    const filtered = issues.filter((i) => !defaultIds.has(i.key))
+    return this.buildTaskTree(filtered, defaultIds)
+  }
+
+  // Groups a flat list of issues into top-level tasks with their subtasks,
+  // fetching parents that aren't in the list so assigned subtasks still nest.
+  private async buildTaskTree(issues: JiraIssue[], defaultIds: Set<string>): Promise<AppTask[]> {
+    // Position map keeps the incoming order even after fetching missing parents.
     const positionMap = new Map<string, number>()
     issues.forEach((issue, idx) => {
       positionMap.set(issue.key, idx)
@@ -298,7 +320,7 @@ export class JiraClient {
       return task
     })
 
-    // Parents whose subtasks are assigned to me but the parent itself isn't in results
+    // Parents whose subtasks are in the list but the parent itself isn't
     const missingParentIds = [...subtasksByParent.keys()].filter(
       (id) => !topLevelIds.has(id) && !defaultIds.has(id)
     )
