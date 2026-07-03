@@ -906,6 +906,7 @@ export default function DashboardPage() {
           taskId={editingTask.id}
           taskTitle={editingTask.title}
           date={selectedDate}
+          dayTotalHours={existingTotal}
           onClose={() => setEditingTask(null)}
           onChanged={(delta) => handleWorklogChanged(editingTask.id, delta)}
         />
