@@ -6,6 +6,8 @@ interface WorklogEditModalProps {
   taskId: string
   taskTitle: string
   date: Date
+  /** Total hours already logged for the day across all tasks */
+  dayTotalHours: number
   onClose: () => void
   // Called after a successful save or delete. `deltaHours` may be negative.
   onChanged: (deltaHours: number) => void
@@ -30,6 +32,7 @@ export default function WorklogEditModal({
   taskId,
   taskTitle,
   date,
+  dayTotalHours,
   onClose,
   onChanged,
 }: WorklogEditModalProps) {
@@ -175,6 +178,7 @@ export default function WorklogEditModal({
               <EntryRow
                 key={entry.id}
                 entry={entry}
+                dayTotalHours={dayTotalHours}
                 isSaving={savingId === entry.id}
                 isBusy={deletingId === entry.id || confirmDeleteId === entry.id}
                 onSave={(h, c) => handleSave(entry.id!, h, c)}
@@ -231,13 +235,14 @@ export default function WorklogEditModal({
 
 interface EntryRowProps {
   entry: JiraTimeEntry
+  dayTotalHours: number
   isSaving: boolean
   isBusy: boolean
   onSave: (hours: number, comment: string) => void
   onDeleteRequest: () => void
 }
 
-function EntryRow({ entry, isSaving, isBusy, onSave, onDeleteRequest }: EntryRowProps) {
+function EntryRow({ entry, dayTotalHours, isSaving, isBusy, onSave, onDeleteRequest }: EntryRowProps) {
   const [hoursStr, setHoursStr] = useState<string>(String(entry.hours))
   const [comment, setComment] = useState<string>(entry.comment ?? '')
 
@@ -251,6 +256,13 @@ function EntryRow({ entry, isSaving, isBusy, onSave, onDeleteRequest }: EntryRow
   const valid = Number.isFinite(hoursNum) && hoursNum > 0 && hoursNum <= 24
   const dirty = hoursStr !== String(entry.hours) || comment !== (entry.comment ?? '')
   const timeLabel = formatStartedTime(entry.started)
+
+  // Projected day total: swap out this entry's current hours for the new value.
+  // dayTotalHours already includes entry.hours, so subtract it and add the new amount.
+  const projectedTotal = Number.isFinite(hoursNum)
+    ? dayTotalHours - entry.hours + hoursNum
+    : dayTotalHours
+  const wouldExceed = dirty && valid && projectedTotal > 8.001
 
   return (
     <div className="border border-gray-200 dark:border-gray-600 rounded-lg p-3 bg-white dark:bg-gray-700 space-y-2">
@@ -266,7 +278,11 @@ function EntryRow({ entry, isSaving, isBusy, onSave, onDeleteRequest }: EntryRow
           onKeyDown={(e) => {
             if (['-', '+', 'e', 'E'].includes(e.key)) e.preventDefault()
           }}
-          className="w-16 px-2 py-1.5 text-sm text-center border border-gray-300 dark:border-gray-500 rounded focus:outline-none focus:ring-1 focus:ring-jira-blue bg-white dark:bg-gray-600 dark:text-gray-100"
+          className={`w-16 px-2 py-1.5 text-sm text-center border rounded focus:outline-none focus:ring-1 focus:ring-jira-blue bg-white dark:bg-gray-600 dark:text-gray-100 ${
+            wouldExceed
+              ? 'border-red-400 dark:border-red-500'
+              : 'border-gray-300 dark:border-gray-500'
+          }`}
         />
         <span className="text-xs text-gray-500 dark:text-gray-400">h</span>
         {timeLabel && (
@@ -276,7 +292,7 @@ function EntryRow({ entry, isSaving, isBusy, onSave, onDeleteRequest }: EntryRow
         <button
           type="button"
           onClick={() => onSave(hoursNum, comment)}
-          disabled={!dirty || !valid || isSaving || isBusy}
+          disabled={!dirty || !valid || isSaving || isBusy || wouldExceed}
           className="px-3 py-1.5 text-xs font-medium text-white bg-jira-blue hover:bg-jira-blue/90 rounded disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {isSaving ? 'Saving...' : 'Save'}
@@ -285,7 +301,7 @@ function EntryRow({ entry, isSaving, isBusy, onSave, onDeleteRequest }: EntryRow
           type="button"
           onClick={onDeleteRequest}
           disabled={isSaving || isBusy}
-          className="p-1.5 text-red-500 hover:bg-red-50 rounded disabled:opacity-50 disabled:cursor-not-allowed"
+          className="p-1.5 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded disabled:opacity-50 disabled:cursor-not-allowed"
           aria-label="Delete entry"
         >
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -298,8 +314,18 @@ function EntryRow({ entry, isSaving, isBusy, onSave, onDeleteRequest }: EntryRow
         value={comment}
         onChange={(e) => setComment(e.target.value)}
         placeholder="Comment (optional)"
-          className="w-full px-2 py-1.5 text-xs border border-gray-200 dark:border-gray-500 rounded focus:outline-none focus:ring-1 focus:ring-jira-blue bg-white dark:bg-gray-600 dark:text-gray-100 dark:placeholder-gray-400"
+        className="w-full px-2 py-1.5 text-xs border border-gray-200 dark:border-gray-500 rounded focus:outline-none focus:ring-1 focus:ring-jira-blue bg-white dark:bg-gray-600 dark:text-gray-100 dark:placeholder-gray-400"
       />
+      {wouldExceed && (
+        <div className="flex items-start gap-1.5 text-xs text-red-600 dark:text-red-400">
+          <svg className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+            <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+          </svg>
+          <span>
+            This would bring the day total to <strong>{projectedTotal.toFixed(2).replace(/\.?0+$/, '')}h</strong>, exceeding the 8h daily limit.
+          </span>
+        </div>
+      )}
     </div>
   )
 }
