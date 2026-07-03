@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
+import { jiraService } from '../services/jiraService'
 import Calendar from './Calendar'
 
 interface DateNavProps {
@@ -40,6 +41,35 @@ export default function DateNav({ date, onNavigate, onSelectDate }: DateNavProps
   const [showCalendar, setShowCalendar] = useState(false)
   const [popoverPos, setPopoverPos] = useState({ top: 0, left: 0 })
 
+  // Monthly totals: { "YYYY-MM-DD": hours }  — accumulated across all viewed months.
+  const [dailyTotals, setDailyTotals] = useState<Record<string, number>>({})
+  // Months whose data has fully arrived — used by Calendar to decide when to colour cells.
+  const [loadedMonths, setLoadedMonths] = useState<Set<string>>(new Set())
+  // Which month is currently being fetched (drives the spinner in Calendar).
+  const [loadingMonth, setLoadingMonth] = useState<string | null>(null)
+  // Tracks months already requested to prevent duplicate API calls.
+  const fetchingRef = useRef<Set<string>>(new Set())
+
+  function toYearMonth(d: Date): string {
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+  }
+
+  async function loadMonth(yearMonth: string) {
+    if (fetchingRef.current.has(yearMonth)) return
+    fetchingRef.current.add(yearMonth)
+    setLoadingMonth(yearMonth)
+    try {
+      const totals = await jiraService.getMonthlyTotals(yearMonth)
+      setDailyTotals((prev) => ({ ...prev, ...totals }))
+      setLoadedMonths((prev) => new Set([...prev, yearMonth]))
+    } catch {
+      // Mark loaded even on error so cells just stay neutral
+      setLoadedMonths((prev) => new Set([...prev, yearMonth]))
+    } finally {
+      setLoadingMonth((prev) => (prev === yearMonth ? null : prev))
+    }
+  }
+
   function handleDateClick() {
     if (!dateButtonRef.current) return
     const rect = dateButtonRef.current.getBoundingClientRect()
@@ -47,7 +77,9 @@ export default function DateNav({ date, onNavigate, onSelectDate }: DateNavProps
     let left = rect.left + rect.width / 2 - popoverWidth / 2
     left = Math.max(8, Math.min(left, window.innerWidth - popoverWidth - 8))
     setPopoverPos({ top: rect.bottom + 6, left })
+    const opening = !showCalendar
     setShowCalendar((v) => !v)
+    if (opening) loadMonth(toYearMonth(date))
   }
 
   function handleSelect(d: Date) {
@@ -144,7 +176,14 @@ export default function DateNav({ date, onNavigate, onSelectDate }: DateNavProps
             className="fixed z-50"
             style={{ top: popoverPos.top, left: popoverPos.left }}
           >
-            <Calendar selectedDate={date} onSelect={handleSelect} />
+            <Calendar
+              selectedDate={date}
+              onSelect={handleSelect}
+              dailyTotals={dailyTotals}
+              loadedMonths={loadedMonths}
+              loadingMonth={loadingMonth}
+              onViewMonthChange={(ym) => loadMonth(ym)}
+            />
           </div>,
           document.body
         )}

@@ -1,8 +1,17 @@
 import { useEffect, useState } from 'react'
 
+// Calendar with worklog day highlighting
 interface CalendarProps {
   selectedDate: Date
   onSelect: (date: Date) => void
+  /** Accumulated map of { "YYYY-MM-DD": totalHours } for fetched months */
+  dailyTotals?: Record<string, number>
+  /** Set of "YYYY-MM" strings whose data has been loaded */
+  loadedMonths?: Set<string>
+  /** The "YYYY-MM" currently being fetched (shows spinner in header) */
+  loadingMonth?: string | null
+  /** Called when the user navigates to a different month (passes "YYYY-MM") */
+  onViewMonthChange?: (yearMonth: string) => void
 }
 
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
@@ -27,7 +36,7 @@ function startOfDay(d: Date): Date {
   return new Date(d.getFullYear(), d.getMonth(), d.getDate())
 }
 
-export default function Calendar({ selectedDate, onSelect }: CalendarProps) {
+export default function Calendar({ selectedDate, onSelect, dailyTotals, loadedMonths, loadingMonth, onViewMonthChange }: CalendarProps) {
   const [viewMonth, setViewMonth] = useState<Date>(startOfMonth(selectedDate))
 
   // Keep the visible month aligned with the externally-selected date if it changes.
@@ -57,7 +66,11 @@ export default function Calendar({ selectedDate, onSelect }: CalendarProps) {
       <div className="flex items-center justify-between mb-2">
         <button
           type="button"
-          onClick={() => setViewMonth(addMonths(viewMonth, -1))}
+          onClick={() => {
+            const next = addMonths(viewMonth, -1)
+            setViewMonth(next)
+            onViewMonthChange?.(`${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, '0')}`)
+          }}
           className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500 dark:text-gray-400"
           aria-label="Previous month"
         >
@@ -65,10 +78,22 @@ export default function Calendar({ selectedDate, onSelect }: CalendarProps) {
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
           </svg>
         </button>
-        <span className="text-sm font-semibold text-gray-800 dark:text-gray-100">{monthLabel}</span>
+        <span className="text-sm font-semibold text-gray-800 dark:text-gray-100 flex items-center gap-1.5">
+          {monthLabel}
+          {loadingMonth === `${viewMonth.getFullYear()}-${String(viewMonth.getMonth() + 1).padStart(2, '0')}` && (
+            <svg className="animate-spin h-3 w-3 text-gray-400" fill="none" viewBox="0 0 24 24">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+            </svg>
+          )}
+        </span>
         <button
           type="button"
-          onClick={() => setViewMonth(addMonths(viewMonth, 1))}
+          onClick={() => {
+            const next = addMonths(viewMonth, 1)
+            setViewMonth(next)
+            onViewMonthChange?.(`${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, '0')}`)
+          }}
           disabled={nextMonthDisabled}
           className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500 dark:text-gray-400 disabled:opacity-30 disabled:cursor-not-allowed"
           aria-label="Next month"
@@ -97,7 +122,23 @@ export default function Calendar({ selectedDate, onSelect }: CalendarProps) {
           const isTodayCell = isSameDay(d, today)
           const isWeekendCell = d.getDay() === 0 || d.getDay() === 6
 
-          let cls = 'h-8 text-xs rounded flex items-center justify-center transition-colors'
+          const dateKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+          const monthKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+          const monthLoaded = loadedMonths?.has(monthKey) ?? false
+          const loggedHours = dailyTotals?.[dateKey] ?? 0
+          const fullyLogged = monthLoaded && !isFuture && inMonth && !isWeekendCell && loggedHours >= 8
+          const underLogged = monthLoaded && !isFuture && inMonth && !isWeekendCell && loggedHours < 8
+
+          // Background only — very light; text colour stays in its natural category.
+          let bgCls = ''
+          if (!isSelected && fullyLogged) {
+            bgCls = 'bg-green-100/70 dark:bg-green-900/25 hover:bg-green-200/60 dark:hover:bg-green-900/40'
+          } else if (!isSelected && underLogged) {
+            bgCls = 'bg-red-50/80 dark:bg-red-900/20 hover:bg-red-100/70 dark:hover:bg-red-900/35'
+          }
+
+          // Text + default hover colours — never changed by highlight state.
+          let cls = `h-8 text-xs rounded flex items-center justify-center transition-colors ${bgCls}`
           if (isSelected) {
             cls += ' bg-jira-blue text-white font-semibold'
           } else if (isFuture) {
@@ -105,9 +146,11 @@ export default function Calendar({ selectedDate, onSelect }: CalendarProps) {
           } else if (!inMonth) {
             cls += ' text-gray-300 dark:text-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700'
           } else if (isWeekendCell) {
-            cls += ' text-amber-700 dark:text-amber-500 hover:bg-amber-50 dark:hover:bg-amber-900/20'
+            cls += ' text-amber-700 dark:text-amber-500'
+            if (!fullyLogged && !underLogged) cls += ' hover:bg-amber-50 dark:hover:bg-amber-900/20'
           } else {
-            cls += ' text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700'
+            cls += ' text-gray-700 dark:text-gray-200'
+            if (!fullyLogged && !underLogged) cls += ' hover:bg-gray-100 dark:hover:bg-gray-700'
           }
           if (isTodayCell && !isSelected) cls += ' ring-1 ring-jira-blue'
 

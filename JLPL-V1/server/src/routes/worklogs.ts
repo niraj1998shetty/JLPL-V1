@@ -97,6 +97,30 @@ router.post('/', requireAuth, async (req, res) => {
   }
 })
 
+// GET /worklogs/month?month=YYYY-MM
+// Returns { "YYYY-MM-DD": totalHours } for every day in the month that has logged time.
+router.get('/month', requireAuth, async (req, res) => {
+  const monthStr = req.query.month as string
+  if (!monthStr || !/^\d{4}-\d{2}$/.test(monthStr)) {
+    res.status(400).json({ error: 'Query param "month" must be YYYY-MM.' })
+    return
+  }
+  const [year, month] = monthStr.split('-').map(Number)
+  const startDate = `${monthStr}-01`
+  const lastDay = new Date(year, month, 0).getDate()
+  const endDate = `${monthStr}-${String(lastDay).padStart(2, '0')}`
+
+  const client = new JiraClient(req.pat!)
+  try {
+    const myself = await client.getMyself()
+    const myUserId = myself.accountId ?? myself.name ?? myself.key ?? ''
+    const totals = await client.getDailyTotalsInRange(startDate, endDate, myUserId)
+    res.json(totals)
+  } catch (err: unknown) {
+    handleJiraError(err, res, 'worklogs GET month')
+  }
+})
+
 // GET /worklogs/task/:taskId?date=YYYY-MM-DD
 // Returns the current user's worklog entries for this task on this date, with IDs.
 router.get('/task/:taskId', requireAuth, async (req, res) => {

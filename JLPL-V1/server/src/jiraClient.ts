@@ -432,4 +432,39 @@ export class JiraClient {
   async deleteWorklog(issueKey: string, worklogId: string): Promise<void> {
     await this.http.delete(`/issue/${issueKey}/worklog/${worklogId}`)
   }
+
+  /**
+   * Returns a map of { "YYYY-MM-DD": totalHours } for every day between
+   * startDateStr and endDateStr on which the current user logged time.
+   * Makes 1 JQL search + N parallel worklog fetches (N = distinct issues in range).
+   */
+  async getDailyTotalsInRange(
+    startDateStr: string,
+    endDateStr: string,
+    myUserId: string,
+  ): Promise<Record<string, number>> {
+    const jql = `worklogAuthor = currentUser() AND worklogDate >= "${startDateStr}" AND worklogDate <= "${endDateStr}"`
+    const res = await this.http.get<JiraSearchResponse>('/search', {
+      params: { jql, fields: 'summary', maxResults: 200 },
+    })
+    const issueKeys = res.data.issues.map((i) => i.key)
+    if (issueKeys.length === 0) return {}
+
+    const worklogResults = await Promise.allSettled(
+      issueKeys.map((key) => this.getWorklogs(key)),
+    )
+
+    const totals: Record<string, number> = {}
+    for (let i = 0; i < issueKeys.length; i++) {
+      const result = worklogResults[i]
+      if (result.status !== 'fulfilled') continue
+      for (const wl of result.value) {
+        if (myUserId && userIdentifier(wl.author) !== myUserId) continue
+        const date = wl.started.substring(0, 10)
+        if (date < startDateStr || date > endDateStr) continue
+        totals[date] = (totals[date] ?? 0) + Math.round((wl.timeSpentSeconds / 3600) * 100) / 100
+      }
+    }
+    return totals
+  }
 }

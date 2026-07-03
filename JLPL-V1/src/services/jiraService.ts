@@ -214,6 +214,14 @@ class JiraService {
     return res.data
   }
 
+  /** Returns { "YYYY-MM-DD": totalHours } for every logged day in the given month. */
+  async getMonthlyTotals(month: string): Promise<Record<string, number>> {
+    const res = await this.client.get<Record<string, number>>('/worklogs/month', {
+      params: { month },
+    })
+    return res.data
+  }
+
   async logWork(payload: JiraSubmitPayload): Promise<void> {
     await this.client.post('/worklogs', payload)
   }
