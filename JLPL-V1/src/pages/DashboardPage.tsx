@@ -364,12 +364,12 @@ export default function DashboardPage() {
     resetSession()
   }
 
-  // Worklogs can be edited for up to 14 days back (inclusive of today).
+  // Worklogs can be edited for up to 30 days back (inclusive of today).
   function isEditableDate(date: Date): boolean {
     const today = new Date()
     today.setHours(23, 59, 59, 999)
     const cutoff = new Date()
-    cutoff.setDate(cutoff.getDate() - 14)
+    cutoff.setDate(cutoff.getDate() - 30)
     cutoff.setHours(0, 0, 0, 0)
     return date <= today && date >= cutoff
   }
