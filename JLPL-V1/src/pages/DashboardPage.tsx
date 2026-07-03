@@ -475,6 +475,7 @@ export default function DashboardPage() {
   }
 
   function resetSession() {
+    setExpandedIds(new Set())
     setHours((prev) => {
       const next: HoursMap = {}
       for (const k of Object.keys(prev)) next[k] = ''
@@ -570,15 +571,6 @@ export default function DashboardPage() {
             </div>
           </div>
           <div className="flex items-center gap-2">
-            {!isToday(selectedDate) && (
-              <button
-                onClick={jumpToToday}
-                className="px-3 py-1.5 rounded-lg hover:bg-white/10 text-blue-200 hover:text-white transition-colors text-sm font-medium"
-                title="Jump to today"
-              >
-                Today
-              </button>
-            )}
             {/* Search */}
             <div className="flex items-center">
               {showSearch && (
@@ -594,7 +586,7 @@ export default function DashboardPage() {
                     }
                   }}
                   placeholder="Search tasks…"
-                  className="w-44 sm:w-56 bg-white/10 border border-white/30 rounded-lg px-3 py-1.5 text-sm text-white placeholder-blue-200 focus:outline-none focus:border-white/60 transition-all"
+                  className="w-28 sm:w-44 bg-white/10 border border-white/30 rounded-lg px-3 py-1.5 text-sm text-white placeholder-blue-200 focus:outline-none focus:border-white/60 transition-all"
                 />
               )}
               <button
@@ -621,6 +613,15 @@ export default function DashboardPage() {
                 )}
               </button>
             </div>
+            {!isToday(selectedDate) && (
+              <button
+                onClick={jumpToToday}
+                className="px-3 py-1.5 rounded-lg hover:bg-white/10 text-blue-200 hover:text-white transition-colors text-sm font-medium"
+                title="Jump to today"
+              >
+                Today
+              </button>
+            )}
             <div ref={userMenuRef} className="relative">
               <button
                 onClick={() => setShowUserMenu((v) => !v)}
