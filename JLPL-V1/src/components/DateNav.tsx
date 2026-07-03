@@ -78,13 +78,13 @@ export default function DateNav({ date, onNavigate, onSelectDate }: DateNavProps
 
   return (
     <div
-      className={`flex items-center justify-between px-4 py-3 border-b border-gray-200 ${
-        weekend ? 'bg-amber-50' : 'bg-white'
+      className={`flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-gray-700 ${
+        weekend ? 'bg-amber-50 dark:bg-amber-900/20' : 'bg-white dark:bg-gray-800'
       }`}
     >
       <button
         onClick={() => onNavigate(-1)}
-        className="p-1.5 rounded-lg text-gray-500 hover:bg-gray-100 hover:text-gray-800 transition-colors"
+        className="p-1.5 rounded-lg text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 hover:text-gray-800 dark:hover:text-gray-100 transition-colors"
         aria-label="Previous day"
       >
         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -99,8 +99,8 @@ export default function DateNav({ date, onNavigate, onSelectDate }: DateNavProps
           onClick={handleDateClick}
           aria-haspopup="dialog"
           aria-expanded={showCalendar}
-          className={`flex items-center gap-1 px-2 py-1 rounded-lg hover:bg-gray-100 transition-colors font-semibold text-sm sm:text-base ${
-            weekend ? 'text-amber-700' : 'text-gray-800'
+          className={`flex items-center gap-1 px-2 py-1 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors font-semibold text-sm sm:text-base ${
+            weekend ? 'text-amber-700 dark:text-amber-500' : 'text-gray-800 dark:text-gray-100'
           }`}
         >
           <span>{formatDate(date)}</span>
@@ -115,12 +115,12 @@ export default function DateNav({ date, onNavigate, onSelectDate }: DateNavProps
         </button>
 
         {weekend && (
-          <span className="text-xs font-medium text-amber-600 bg-amber-100 px-1.5 py-0.5 rounded">
+          <span className="text-xs font-medium text-amber-600 dark:text-amber-400 bg-amber-100 dark:bg-amber-900/30 px-1.5 py-0.5 rounded">
             Weekend
           </span>
         )}
         {today && !weekend && (
-          <span className="text-xs font-medium text-jira-blue bg-jira-blue-light px-1.5 py-0.5 rounded">
+          <span className="text-xs font-medium text-jira-blue dark:text-blue-400 bg-jira-blue-light dark:bg-blue-900/30 px-1.5 py-0.5 rounded">
             Today
           </span>
         )}
@@ -129,7 +129,7 @@ export default function DateNav({ date, onNavigate, onSelectDate }: DateNavProps
       <button
         onClick={() => onNavigate(1)}
         disabled={today}
-        className="p-1.5 rounded-lg text-gray-500 hover:bg-gray-100 hover:text-gray-800 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+        className="p-1.5 rounded-lg text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 hover:text-gray-800 dark:hover:text-gray-100 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
         aria-label="Next day"
       >
         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">

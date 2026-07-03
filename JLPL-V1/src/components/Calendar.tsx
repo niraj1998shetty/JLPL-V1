@@ -52,25 +52,25 @@ export default function Calendar({ selectedDate, onSelect }: CalendarProps) {
   const monthLabel = viewMonth.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
 
   return (
-    <div className="w-72 bg-white rounded-xl shadow-xl border border-gray-200 p-3">
+    <div className="w-72 bg-white dark:bg-gray-800 rounded-xl shadow-xl border border-gray-200 dark:border-gray-700 p-3">
       {/* Month header */}
       <div className="flex items-center justify-between mb-2">
         <button
           type="button"
           onClick={() => setViewMonth(addMonths(viewMonth, -1))}
-          className="p-1 rounded hover:bg-gray-100 text-gray-500"
+          className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500 dark:text-gray-400"
           aria-label="Previous month"
         >
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
           </svg>
         </button>
-        <span className="text-sm font-semibold text-gray-800">{monthLabel}</span>
+        <span className="text-sm font-semibold text-gray-800 dark:text-gray-100">{monthLabel}</span>
         <button
           type="button"
           onClick={() => setViewMonth(addMonths(viewMonth, 1))}
           disabled={nextMonthDisabled}
-          className="p-1 rounded hover:bg-gray-100 text-gray-500 disabled:opacity-30 disabled:cursor-not-allowed"
+          className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500 dark:text-gray-400 disabled:opacity-30 disabled:cursor-not-allowed"
           aria-label="Next month"
         >
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -82,7 +82,7 @@ export default function Calendar({ selectedDate, onSelect }: CalendarProps) {
       {/* Weekday header row */}
       <div className="grid grid-cols-7 gap-0.5 mb-1">
         {WEEKDAYS.map((d) => (
-          <div key={d} className="text-[10px] font-bold text-gray-400 text-center py-1 uppercase">
+          <div key={d} className="text-[10px] font-bold text-gray-400 dark:text-gray-500 text-center py-1 uppercase">
             {d}
           </div>
         ))}
@@ -101,13 +101,13 @@ export default function Calendar({ selectedDate, onSelect }: CalendarProps) {
           if (isSelected) {
             cls += ' bg-jira-blue text-white font-semibold'
           } else if (isFuture) {
-            cls += ' text-gray-300 cursor-not-allowed'
+            cls += ' text-gray-300 dark:text-gray-600 cursor-not-allowed'
           } else if (!inMonth) {
-            cls += ' text-gray-300 hover:bg-gray-100'
+            cls += ' text-gray-300 dark:text-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700'
           } else if (isWeekendCell) {
-            cls += ' text-amber-700 hover:bg-amber-50'
+            cls += ' text-amber-700 dark:text-amber-500 hover:bg-amber-50 dark:hover:bg-amber-900/20'
           } else {
-            cls += ' text-gray-700 hover:bg-gray-100'
+            cls += ' text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700'
           }
           if (isTodayCell && !isSelected) cls += ' ring-1 ring-jira-blue'
 

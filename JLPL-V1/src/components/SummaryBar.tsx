@@ -21,9 +21,9 @@ export default function SummaryBar({
   const progressPct = Math.min(100, (totalLogged / 8) * 100)
 
   return (
-    <div className="border-t border-gray-200 bg-white">
+    <div className="border-t border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
       {/* Progress bar */}
-      <div className="h-1 bg-gray-100">
+      <div className="h-1 bg-gray-100 dark:bg-gray-700">
         <div
           className={`h-full rounded-full transition-all duration-300 ${
             isOverLimit ? 'bg-red-500' : totalLogged >= 8 ? 'bg-green-500' : 'bg-jira-blue'
@@ -37,20 +37,20 @@ export default function SummaryBar({
         <div className="flex items-center justify-between text-sm mb-3">
           <div className="flex items-center gap-4">
             <div>
-              <span className="text-gray-500 text-xs">This session</span>
-              <div className="font-semibold text-gray-800">{sessionHours.toFixed(2).replace(/\.?0+$/, '')}h</div>
+              <span className="text-gray-500 dark:text-gray-400 text-xs">This session</span>
+              <div className="font-semibold text-gray-800 dark:text-gray-100">{sessionHours.toFixed(2).replace(/\.?0+$/, '')}h</div>
             </div>
-            <div className="w-px h-8 bg-gray-200" />
+            <div className="w-px h-8 bg-gray-200 dark:bg-gray-600" />
             <div>
-              <span className="text-gray-500 text-xs">Total logged</span>
-              <div className={`font-semibold ${isOverLimit ? 'text-red-600' : totalLogged >= 8 ? 'text-green-600' : 'text-gray-800'}`}>
+              <span className="text-gray-500 dark:text-gray-400 text-xs">Total logged</span>
+              <div className={`font-semibold ${isOverLimit ? 'text-red-600 dark:text-red-400' : totalLogged >= 8 ? 'text-green-600 dark:text-green-400' : 'text-gray-800 dark:text-gray-100'}`}>
                 {totalLogged.toFixed(2).replace(/\.?0+$/, '')}h / 8h
               </div>
             </div>
           </div>
 
           {isOverLimit && (
-            <div className="text-xs text-red-600 font-medium bg-red-50 border border-red-200 px-2 py-1 rounded-lg">
+            <div className="text-xs text-red-600 dark:text-red-400 font-medium bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-700 px-2 py-1 rounded-lg">
               Exceeds 8h ({actualTotal.toFixed(2)}h)
             </div>
           )}

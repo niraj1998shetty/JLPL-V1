@@ -4,6 +4,7 @@ import SummaryBar from '../components/SummaryBar'
 import TaskRow from '../components/TaskRow'
 import WorklogEditModal from '../components/WorklogEditModal'
 import { useAuth } from '../context/AuthContext'
+import { useTheme } from '../context/ThemeContext'
 import { jiraService } from '../services/jiraService'
 import { JiraTask, JiraTimeEntry } from '../types/jira'
 
@@ -554,7 +555,7 @@ export default function DashboardPage() {
   }
 
   return (
-    <div className="h-screen bg-gray-50 flex flex-col overflow-hidden">
+    <div className="h-screen bg-gray-50 dark:bg-gray-900 flex flex-col overflow-hidden">
       {/* Header */}
       <header className="bg-jira-navy text-white shadow-md flex-shrink-0">
         <div className="max-w-3xl mx-auto px-4 py-3 flex items-center justify-between">
@@ -635,12 +636,12 @@ export default function DashboardPage() {
               {showUserMenu && (
                 <div
                   role="menu"
-                  className="absolute right-0 mt-2 w-56 bg-white rounded-xl shadow-xl border border-gray-200 py-2 text-gray-800 z-50"
+                  className="absolute right-0 mt-2 w-56 bg-white dark:bg-gray-800 rounded-xl shadow-xl border border-gray-200 dark:border-gray-700 py-2 text-gray-800 dark:text-gray-100 z-50"
                 >
-                  <div className="px-4 py-2 border-b border-gray-100">
+                  <div className="px-4 py-2 border-b border-gray-100 dark:border-gray-700">
                     <p className="text-sm font-semibold leading-tight">{userName || 'Signed in'}</p>
                     {teams.length > 0 && (
-                      <p className="text-xs text-gray-500 mt-0.5">
+                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
                         {teams.join(', ')} team{teams.length > 1 ? 's' : ''}
                       </p>
                     )}
@@ -651,9 +652,9 @@ export default function DashboardPage() {
                       setShowUserMenu(false)
                       setShowSettings(true)
                     }}
-                    className="w-full flex items-center gap-2 px-4 py-2 text-sm hover:bg-gray-100 transition-colors text-left"
+                    className="w-full flex items-center gap-2 px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors text-left"
                   >
-                    <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg className="w-4 h-4 text-gray-500 dark:text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
                     </svg>
@@ -665,9 +666,9 @@ export default function DashboardPage() {
                       setShowUserMenu(false)
                       window.open('https://jira.eg.dk/secure/jiraerpOverviewPageWebworkAction.jspa', '_blank')
                     }}
-                    className="w-full flex items-center gap-2 px-4 py-2 text-sm hover:bg-gray-100 transition-colors text-left border-t border-gray-100"
+                    className="w-full flex items-center gap-2 px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors text-left border-t border-gray-100 dark:border-gray-700"
                   >
-                    <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg className="w-4 h-4 text-gray-500 dark:text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
                     </svg>
                     Go to ERP
@@ -678,9 +679,9 @@ export default function DashboardPage() {
                       setShowUserMenu(false)
                       window.open('https://5177942.app.netsuite.com/app/center/card.nl?sc=-46&whence=', '_blank')
                     }}
-                    className="w-full flex items-center gap-2 px-4 py-2 text-sm hover:bg-gray-100 transition-colors text-left"
+                    className="w-full flex items-center gap-2 px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors text-left"
                   >
-                    <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg className="w-4 h-4 text-gray-500 dark:text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
                     </svg>
                     Go to NetSuite
@@ -695,9 +696,9 @@ export default function DashboardPage() {
       {/* Main content */}
       <div className="flex-1 flex flex-col max-w-3xl mx-auto w-full min-h-0">
         {/* Date nav + table header — fixed in flex layout, not scrolled */}
-        <div className="flex-shrink-0 bg-white shadow-sm">
+        <div className="flex-shrink-0 bg-white dark:bg-gray-800 shadow-sm">
           <DateNav date={selectedDate} onNavigate={navigateDate} onSelectDate={selectDate} />
-          <div className="flex items-center px-4 py-2 bg-gray-50 border-b border-gray-200 text-xs font-bold uppercase tracking-wider text-gray-400">
+          <div className="flex items-center px-4 py-2 bg-gray-50 dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 text-xs font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500">
             <div className="flex-1">Task</div>
             <div className="w-20 text-center">Hours</div>
           </div>
@@ -705,7 +706,7 @@ export default function DashboardPage() {
 
         {/* Success banner */}
         {successMsg && (
-          <div className="bg-green-50 border-b border-green-200 px-4 py-2.5 flex items-center gap-2 text-sm text-green-700">
+          <div className="bg-green-50 dark:bg-green-900/30 border-b border-green-200 dark:border-green-700 px-4 py-2.5 flex items-center gap-2 text-sm text-green-700 dark:text-green-400">
             <svg className="w-4 h-4 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
               <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
             </svg>
@@ -718,7 +719,7 @@ export default function DashboardPage() {
 
         {/* Loading state */}
         {isLoadingTasks && (
-          <div className="flex flex-col items-center justify-center py-16 text-gray-400 gap-3">
+          <div className="flex flex-col items-center justify-center py-16 text-gray-400 dark:text-gray-500 gap-3">
             <svg className="animate-spin h-8 w-8 text-jira-blue" fill="none" viewBox="0 0 24 24">
               <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
               <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
@@ -729,11 +730,11 @@ export default function DashboardPage() {
 
         {/* Error state */}
         {!isLoadingTasks && taskError && (
-          <div className="m-4 bg-red-50 border border-red-200 rounded-xl p-6 text-center">
+          <div className="m-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl p-6 text-center">
             <svg className="w-10 h-10 text-red-400 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
             </svg>
-            <p className="text-sm text-red-700 mb-4">{taskError}</p>
+            <p className="text-sm text-red-700 dark:text-red-400 mb-4">{taskError}</p>
             <div className="flex items-center justify-center gap-3">
               <button onClick={loadTasks} className="btn-secondary text-sm">Retry</button>
               <button onClick={logout} className="btn-secondary text-sm text-red-600 border-red-300 hover:bg-red-50">Reconfigure Token</button>
@@ -746,7 +747,7 @@ export default function DashboardPage() {
           <div className="flex-1 flex flex-col min-h-0 relative">
             {/* Worklog loading overlay */}
             {isLoadingWorklogs && (
-              <div className="absolute inset-0 bg-white/80 z-40 flex flex-col items-center justify-center gap-3">
+              <div className="absolute inset-0 bg-white/80 dark:bg-gray-900/80 z-40 flex flex-col items-center justify-center gap-3">
                 <svg className="animate-spin h-8 w-8 text-jira-blue" fill="none" viewBox="0 0 24 24">
                   <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                   <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
@@ -757,7 +758,7 @@ export default function DashboardPage() {
             <div className="flex-1 overflow-y-auto">
 
             {worklogError && (
-              <div className="px-4 py-2 text-xs text-amber-600 bg-amber-50 border-b border-amber-100">
+              <div className="px-4 py-2 text-xs text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 border-b border-amber-100 dark:border-amber-800">
                 {worklogError}
               </div>
             )}
@@ -849,7 +850,7 @@ export default function DashboardPage() {
             )}
 
             {commonTasks.length === 0 && assignedTasks.length === 0 && otherSectionTasks.length === 0 && (
-              <div className="text-center py-16 text-gray-400">
+              <div className="text-center py-16 text-gray-400 dark:text-gray-500">
                 <svg className="w-12 h-12 mx-auto mb-3 opacity-30" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
                 </svg>
@@ -917,7 +918,7 @@ export default function DashboardPage() {
 
 function GroupHeader({ label }: { label: string }) {
   return (
-    <div className="px-4 py-1.5 text-[11px] font-bold uppercase tracking-widest text-gray-400 bg-gray-50 border-b border-gray-200">
+    <div className="px-4 py-1.5 text-[11px] font-bold uppercase tracking-widest text-gray-400 dark:text-gray-500 bg-gray-50 dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700">
       {label}
     </div>
   )
@@ -975,7 +976,7 @@ function OtherTaskAdder({
   }
 
   return (
-    <div className="px-4 py-3 border-b border-gray-100 bg-blue-50/40">
+    <div className="px-4 py-3 border-b border-gray-100 dark:border-gray-700 bg-blue-50/40 dark:bg-blue-900/10">
       <div className="flex items-center gap-2">
         <input
           ref={inputRef}
@@ -990,7 +991,7 @@ function OtherTaskAdder({
             if (e.key === 'Escape') close()
           }}
           placeholder="Enter Task ID (e.g. DMO-13745)"
-          className="flex-1 px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-jira-blue focus:border-transparent bg-white uppercase placeholder:normal-case"
+          className="flex-1 px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-jira-blue focus:border-transparent bg-white dark:bg-gray-700 dark:text-gray-100 dark:placeholder-gray-400 uppercase placeholder:normal-case"
         />
         <button
           type="button"
@@ -1123,19 +1124,19 @@ function ConfirmDialog({
 
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 px-4 pb-4 sm:pb-0">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6">
+      <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-sm p-6">
         <div className="flex items-center gap-3 mb-4">
-          <div className="w-10 h-10 bg-jira-blue-light rounded-full flex items-center justify-center">
+          <div className="w-10 h-10 bg-jira-blue-light dark:bg-blue-900/40 rounded-full flex items-center justify-center">
             <svg className="w-5 h-5 text-jira-blue" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
           </div>
           <div>
-            <h3 className="font-semibold text-gray-800">Confirm Time Log</h3>
-            <p className="text-xs text-gray-500">{dateStr}</p>
+            <h3 className="font-semibold text-gray-800 dark:text-gray-100">Confirm Time Log</h3>
+            <p className="text-xs text-gray-500 dark:text-gray-400">{dateStr}</p>
           </div>
         </div>
-        <p className="text-sm text-gray-600 mb-6">
+        <p className="text-sm text-gray-600 dark:text-gray-300 mb-6">
           You are about to log <strong>{sessionHours.toFixed(2).replace(/\.?0+$/, '')} hours</strong>. This action cannot be undone.
         </p>
         <div className="flex gap-3">
@@ -1158,6 +1159,7 @@ function SettingsDrawer({
   onClose: () => void
   onLogout: () => void
 }) {
+  const { isDark, toggleDark } = useTheme()
   const [copied, setCopied] = useState(false)
 
   const handleCopyPat = () => {
@@ -1169,29 +1171,53 @@ function SettingsDrawer({
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40" onClick={onClose}>
       <div
-        className="bg-white rounded-t-2xl shadow-2xl w-full max-w-3xl p-6 pb-8"
+        className="bg-white dark:bg-gray-800 rounded-t-2xl shadow-2xl w-full max-w-3xl p-6 pb-8"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="w-10 h-1 bg-gray-200 rounded-full mx-auto mb-5" />
-        <h3 className="font-semibold text-gray-800 mb-1">Settings</h3>
-        <p className="text-sm text-gray-500 mb-5">Logged in as team <strong>{teams.join(', ')}</strong></p>
+        <div className="w-10 h-1 bg-gray-200 dark:bg-gray-600 rounded-full mx-auto mb-5" />
+        <h3 className="font-semibold text-gray-800 dark:text-gray-100 mb-1">Settings</h3>
+        <p className="text-sm text-gray-500 dark:text-gray-400 mb-5">Logged in as team <strong>{teams.join(', ')}</strong></p>
+
+        {/* Dark mode toggle */}
+        <div className="flex items-center justify-between mb-5 p-4 bg-gray-50 dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700">
+          <div>
+            <p className="text-sm font-medium text-gray-800 dark:text-gray-100">Dark mode</p>
+            <p className="text-xs text-gray-500 dark:text-gray-400">Switch to dark theme</p>
+          </div>
+          <button
+            type="button"
+            onClick={toggleDark}
+            className={`relative w-11 h-6 rounded-full transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-jira-blue focus:ring-offset-2 dark:focus:ring-offset-gray-800 ${
+              isDark ? 'bg-jira-blue' : 'bg-gray-300'
+            }`}
+            aria-label="Toggle dark mode"
+            aria-checked={isDark}
+            role="switch"
+          >
+            <span
+              className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform duration-200 ${
+                isDark ? 'translate-x-5' : ''
+              }`}
+            />
+          </button>
+        </div>
 
         {/* Current token display */}
-        <div className="mb-5 p-4 bg-gray-50 rounded-xl border border-gray-200">
-          <p className="text-xs font-semibold text-gray-600 mb-2">Current Token</p>
+        <div className="mb-5 p-4 bg-gray-50 dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700">
+          <p className="text-xs font-semibold text-gray-600 dark:text-gray-400 mb-2">Current Token</p>
           <div className="flex items-center gap-2">
             <input
               type="password"
               value={currentPat}
               readOnly
-              className="flex-1 px-3 py-2 text-sm border border-gray-300 rounded-lg bg-white text-gray-700"
+              className="flex-1 px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300"
             />
             <button
               onClick={handleCopyPat}
               className={`px-3 py-2 text-sm font-medium rounded-lg transition-colors ${
                 copied
-                  ? 'bg-green-100 text-green-700 border border-green-300'
-                  : 'bg-gray-200 text-gray-700 hover:bg-gray-300 border border-gray-300'
+                  ? 'bg-green-100 text-green-700 border border-green-300 dark:bg-green-900/30 dark:text-green-400 dark:border-green-700'
+                  : 'bg-gray-200 text-gray-700 hover:bg-gray-300 border border-gray-300 dark:bg-gray-600 dark:text-gray-200 dark:hover:bg-gray-500 dark:border-gray-500'
               }`}
             >
               {copied ? '✓ Copied' : 'Copy'}
@@ -1201,7 +1227,7 @@ function SettingsDrawer({
 
         <button
           onClick={onLogout}
-          className="w-full flex items-center gap-3 px-4 py-3 rounded-xl border border-red-200 text-red-600 hover:bg-red-50 transition-colors text-sm font-medium"
+          className="w-full flex items-center gap-3 px-4 py-3 rounded-xl border border-red-200 dark:border-red-800 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors text-sm font-medium"
         >
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
@@ -1209,7 +1235,7 @@ function SettingsDrawer({
           Sign out &amp; change token
         </button>
 
-        <p className="text-center text-xs text-gray-400 mt-6">✨ Made with love, Dynaway. ✨</p>
+        <p className="text-center text-xs text-gray-400 dark:text-gray-500 mt-6">✨ Made with love, Dynaway. ✨</p>
       </div>
     </div>
   )

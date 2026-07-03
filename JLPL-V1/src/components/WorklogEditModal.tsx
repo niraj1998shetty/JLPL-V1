@@ -115,20 +115,20 @@ export default function WorklogEditModal({
       onClick={onClose}
     >
       <div
-        className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[80vh] flex flex-col"
+        className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-lg max-h-[80vh] flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="flex items-start justify-between p-5 border-b border-gray-200">
+        <div className="flex items-start justify-between p-5 border-b border-gray-200 dark:border-gray-700">
           <div className="min-w-0">
-            <h3 className="font-semibold text-gray-800">Edit logged hours</h3>
-            <p className="text-xs text-gray-500 mt-0.5 truncate">
+            <h3 className="font-semibold text-gray-800 dark:text-gray-100">Edit logged hours</h3>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 truncate">
               {taskTitle} <span className="text-gray-400">·</span> {headerDate}
             </p>
           </div>
           <button
             onClick={onClose}
-            className="ml-3 p-1 rounded hover:bg-gray-100 text-gray-400 hover:text-gray-700 flex-shrink-0"
+            className="ml-3 p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 flex-shrink-0"
             aria-label="Close"
           >
             <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
@@ -153,19 +153,19 @@ export default function WorklogEditModal({
           )}
 
           {!loading && error && (
-            <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg p-3">
+            <p className="text-sm text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-3">
               {error}
             </p>
           )}
 
           {!loading && !error && entries.length === 0 && (
-            <p className="text-sm text-gray-500 text-center py-8">
+            <p className="text-sm text-gray-500 dark:text-gray-400 text-center py-8">
               No worklog entries for this day.
             </p>
           )}
 
           {actionError && (
-            <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg p-3 mb-3">
+            <p className="text-sm text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-3 mb-3">
               {actionError}
             </p>
           )}
@@ -185,10 +185,10 @@ export default function WorklogEditModal({
         </div>
 
         {/* Footer */}
-        <div className="px-5 py-3 border-t border-gray-200 flex justify-end">
+        <div className="px-5 py-3 border-t border-gray-200 dark:border-gray-700 flex justify-end">
           <button
             onClick={onClose}
-            className="px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+            className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
           >
             Close
           </button>
@@ -202,25 +202,25 @@ export default function WorklogEditModal({
           onClick={() => setConfirmDeleteId(null)}
         >
           <div
-            className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6"
+            className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-sm p-6"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center gap-3 mb-4">
-              <div className="w-10 h-10 bg-red-100 rounded-full flex items-center justify-center">
-                <svg className="w-5 h-5 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <div className="w-10 h-10 bg-red-100 dark:bg-red-900/40 rounded-full flex items-center justify-center">
+                <svg className="w-5 h-5 text-red-600 dark:text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
                 </svg>
               </div>
               <div>
-                <h4 className="font-semibold text-gray-800">Delete this entry?</h4>
-                <p className="text-xs text-gray-500">This cannot be undone.</p>
+                <h4 className="font-semibold text-gray-800 dark:text-gray-100">Delete this entry?</h4>
+                <p className="text-xs text-gray-500 dark:text-gray-400">This cannot be undone.</p>
               </div>
             </div>
             <div className="flex gap-3">
               <button
                 onClick={() => setConfirmDeleteId(null)}
                 disabled={deletingId === confirmDeleteId}
-                className="flex-1 px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg disabled:opacity-50"
+                className="flex-1 px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-200 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-lg disabled:opacity-50"
               >
                 Cancel
               </button>
@@ -263,7 +263,7 @@ function EntryRow({ entry, isSaving, isBusy, onSave, onDeleteRequest }: EntryRow
   const timeLabel = formatStartedTime(entry.started)
 
   return (
-    <div className="border border-gray-200 rounded-lg p-3 bg-white space-y-2">
+    <div className="border border-gray-200 dark:border-gray-600 rounded-lg p-3 bg-white dark:bg-gray-700 space-y-2">
       <div className="flex items-center gap-2">
         <input
           type="number"
@@ -276,11 +276,11 @@ function EntryRow({ entry, isSaving, isBusy, onSave, onDeleteRequest }: EntryRow
           onKeyDown={(e) => {
             if (['-', '+', 'e', 'E'].includes(e.key)) e.preventDefault()
           }}
-          className="w-16 px-2 py-1.5 text-sm text-center border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-jira-blue"
+          className="w-16 px-2 py-1.5 text-sm text-center border border-gray-300 dark:border-gray-500 rounded focus:outline-none focus:ring-1 focus:ring-jira-blue bg-white dark:bg-gray-600 dark:text-gray-100"
         />
-        <span className="text-xs text-gray-500">h</span>
+        <span className="text-xs text-gray-500 dark:text-gray-400">h</span>
         {timeLabel && (
-          <span className="text-[10px] text-gray-400 ml-1 whitespace-nowrap">at {timeLabel}</span>
+          <span className="text-[10px] text-gray-400 dark:text-gray-500 ml-1 whitespace-nowrap">at {timeLabel}</span>
         )}
         <div className="flex-1" />
         <button
@@ -308,7 +308,7 @@ function EntryRow({ entry, isSaving, isBusy, onSave, onDeleteRequest }: EntryRow
         value={comment}
         onChange={(e) => setComment(e.target.value)}
         placeholder="Comment (optional)"
-        className="w-full px-2 py-1.5 text-xs border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-jira-blue bg-white"
+          className="w-full px-2 py-1.5 text-xs border border-gray-200 dark:border-gray-500 rounded focus:outline-none focus:ring-1 focus:ring-jira-blue bg-white dark:bg-gray-600 dark:text-gray-100 dark:placeholder-gray-400"
       />
     </div>
   )

@@ -112,13 +112,13 @@ export default function TaskRow({
 
   return (
     <div
-      className={`border-b border-gray-100 last:border-0 ${
-        isSubtask ? 'bg-gray-100' : 'bg-white'
+      className={`border-b border-gray-100 dark:border-gray-700 last:border-0 ${
+        isSubtask ? 'bg-gray-100 dark:bg-gray-700/50' : 'bg-white dark:bg-gray-800'
       }`}
     >
       <div
         className={`flex items-start gap-2 py-2.5 pr-3 ${isSubtask ? 'pl-9' : 'pl-3'} ${
-          isExpandable && !isSubtask ? 'cursor-pointer hover:bg-blue-50 transition-colors' : ''
+          isExpandable && !isSubtask ? 'cursor-pointer hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors' : ''
         }`}
         onClick={handleRowClick}
       >
@@ -164,7 +164,7 @@ export default function TaskRow({
                 TEST
               </span>
             )}
-            <span className="text-xs text-gray-700 truncate">{task.summary}</span>
+            <span className="text-xs text-gray-700 dark:text-gray-300 truncate">{task.summary}</span>
             {hasEstimateData && (
               <button
                 ref={infoButtonRef}
@@ -188,7 +188,7 @@ export default function TaskRow({
                 value={comment}
                 onChange={(e) => onCommentChange(task.id, e.target.value)}
                 placeholder="Add a comment (optional)"
-                className="w-full px-2 py-1 text-xs border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-jira-blue focus:border-transparent bg-white"
+                className="w-full px-2 py-1 text-xs border border-gray-200 dark:border-gray-600 rounded focus:outline-none focus:ring-1 focus:ring-jira-blue focus:border-transparent bg-white dark:bg-gray-700 dark:text-gray-200 dark:placeholder-gray-500"
               />
             </div>
           )}
@@ -230,11 +230,11 @@ export default function TaskRow({
               onFocus={() => setShowPlaceholder(false)}
               onBlur={() => setShowPlaceholder(true)}
               placeholder={showPlaceholder ? "0" : ""}
-              className="w-16 px-2 py-1.5 text-sm text-center border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-jira-blue focus:border-transparent bg-white"
+              className="w-16 px-2 py-1.5 text-sm text-center border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-jira-blue focus:border-transparent bg-white dark:bg-gray-700 dark:text-gray-100"
             />
           </div>
           {existingHours > 0 && (
-            <span className="text-[10px] text-gray-400 mt-0.5 whitespace-nowrap">{existingHours}h logged</span>
+            <span className="text-[10px] text-gray-400 dark:text-gray-500 mt-0.5 whitespace-nowrap">{existingHours}h logged</span>
           )}
           {pendingChildHours > 0 && (
             <span className="text-[10px] text-jira-blue mt-0.5 whitespace-nowrap" title="Unsaved hours on subtasks">
@@ -250,11 +250,11 @@ export default function TaskRow({
         createPortal(
           <div
             ref={popupRef}
-            className="fixed z-50 w-56 bg-white rounded-xl shadow-xl border border-gray-200 p-3"
+            className="fixed z-50 w-56 bg-white dark:bg-gray-800 rounded-xl shadow-xl border border-gray-200 dark:border-gray-700 p-3"
             style={{ top: popupPos.top, left: popupPos.left }}
             onClick={(e) => e.stopPropagation()}
           >
-            <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-2">
+            <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500 mb-2">
               {task.id}
             </p>
             <EstimatePanel

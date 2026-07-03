@@ -35,8 +35,8 @@ function HoursBar({
 }) {
   return (
     <div className="flex items-center gap-2.5 text-xs">
-      <span className="w-20 flex-shrink-0 text-gray-500">{label}</span>
-      <div className="flex-1 h-1.5 rounded-full bg-gray-200 overflow-hidden flex">
+      <span className="w-20 flex-shrink-0 text-gray-500 dark:text-gray-400">{label}</span>
+      <div className="flex-1 h-1.5 rounded-full bg-gray-200 dark:bg-gray-600 overflow-hidden flex">
         {segments.map((s, i) => (
           <div
             key={i}
@@ -45,7 +45,7 @@ function HoursBar({
           />
         ))}
       </div>
-      <span className="w-10 text-right text-gray-700 font-medium flex-shrink-0">{value}</span>
+      <span className="w-10 text-right text-gray-700 dark:text-gray-200 font-medium flex-shrink-0">{value}</span>
     </div>
   )
 }
@@ -122,15 +122,15 @@ export default function EstimatePanel({
       )}
       {hasStoryPoints && (
         <div className="flex items-center justify-between text-xs">
-          <span className="text-gray-500">Story points</span>
+          <span className="text-gray-500 dark:text-gray-400">Story points</span>
           <span className="font-semibold text-jira-blue">{storyPoints}</span>
         </div>
       )}
       {hasUpdated && (
         <div className="flex items-center justify-between text-xs">
-          <span className="text-gray-500">Updated</span>
+          <span className="text-gray-500 dark:text-gray-400">Updated</span>
           <span
-            className="font-medium text-gray-700"
+            className="font-medium text-gray-700 dark:text-gray-200"
             title={new Date(updatedAt!).toLocaleString()}
           >
             {formatRelativeTime(updatedAt!)}

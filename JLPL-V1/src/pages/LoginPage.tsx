@@ -56,9 +56,9 @@ export default function LoginPage() {
         </div>
 
         {/* Card */}
-        <div className="bg-white rounded-2xl shadow-2xl p-8">
-          <h2 className="text-xl font-semibold text-gray-800 mb-1">Sign in</h2>
-          <p className="text-gray-500 text-sm mb-6">Enter your Jira Personal Access Token to continue</p>
+        <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl p-8">
+          <h2 className="text-xl font-semibold text-gray-800 dark:text-gray-100 mb-1">Sign in</h2>
+          <p className="text-gray-500 dark:text-gray-400 text-sm mb-6">Enter your Jira Personal Access Token to continue</p>
 
           {error && (
             <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg px-4 py-3 mb-5 flex items-start gap-2">
@@ -76,7 +76,7 @@ export default function LoginPage() {
           <form onSubmit={handleSubmit} className="space-y-5">
             {/* PAT Input */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
                 Personal Access Token
               </label>
               <div className="relative">
