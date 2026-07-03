@@ -83,6 +83,14 @@ export default function DashboardPage() {
   const [editingTask, setEditingTask] = useState<{ id: string; title: string } | null>(null)
   const [showUserMenu, setShowUserMenu] = useState(false)
   const userMenuRef = useRef<HTMLDivElement>(null)
+  const [showSearch, setShowSearch] = useState(false)
+  const [searchQuery, setSearchQuery] = useState('')
+  const searchInputRef = useRef<HTMLInputElement>(null)
+
+  // Focus search input when it opens
+  useEffect(() => {
+    if (showSearch) searchInputRef.current?.focus()
+  }, [showSearch])
 
   // Close user menu on outside click or Escape
   useEffect(() => {
@@ -115,8 +123,14 @@ export default function DashboardPage() {
   dateRef.current = selectedDate
 
   // Derived values
-  const commonTasks = tasks.filter((t) => t.isDefault)
-  const assignedTasks = tasks.filter((t) => !t.isDefault)
+  function taskMatchesSearch(t: JiraTask): boolean {
+    if (!searchQuery.trim()) return true
+    const q = searchQuery.toLowerCase()
+    return t.id.toLowerCase().includes(q) || (t.summary ?? '').toLowerCase().includes(q)
+  }
+
+  const commonTasks = tasks.filter((t) => t.isDefault && taskMatchesSearch(t))
+  const assignedTasks = tasks.filter((t) => !t.isDefault && taskMatchesSearch(t))
 
   // Tasks the user logged time on this day that aren't in the active/common list
   // (or their subtasks). Without these, the day's total would include hours that
@@ -160,11 +174,11 @@ export default function DashboardPage() {
   // assigned to them — so previously-logged "other" tasks keep showing after a
   // reload. De-duped so a manually-added task that also has logged hours appears
   // once.
-  const manualOtherTasks = otherTasks.filter((t) => !knownTaskIds.has(t.id))
+  const manualOtherTasks = otherTasks.filter((t) => !knownTaskIds.has(t.id) && taskMatchesSearch(t))
   const manualOtherIds = new Set(manualOtherTasks.map((t) => t.id))
   const otherSectionTasks: JiraTask[] = [
     ...manualOtherTasks,
-    ...extraLoggedTasks.filter((t) => !manualOtherIds.has(t.id)),
+    ...extraLoggedTasks.filter((t) => !manualOtherIds.has(t.id) && taskMatchesSearch(t)),
   ]
 
   const sessionHours = Object.values(hours).reduce<number>(
@@ -565,6 +579,48 @@ export default function DashboardPage() {
                 Today
               </button>
             )}
+            {/* Search */}
+            <div className="flex items-center">
+              {showSearch && (
+                <input
+                  ref={searchInputRef}
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Escape') {
+                      setShowSearch(false)
+                      setSearchQuery('')
+                    }
+                  }}
+                  placeholder="Search tasks…"
+                  className="w-44 sm:w-56 bg-white/10 border border-white/30 rounded-lg px-3 py-1.5 text-sm text-white placeholder-blue-200 focus:outline-none focus:border-white/60 transition-all"
+                />
+              )}
+              <button
+                onClick={() => {
+                  if (showSearch) {
+                    setShowSearch(false)
+                    setSearchQuery('')
+                  } else {
+                    setShowSearch(true)
+                  }
+                }}
+                className="w-9 h-9 rounded-full flex items-center justify-center hover:bg-white/10 transition-colors text-blue-200 hover:text-white"
+                title={showSearch ? 'Close search' : 'Search tasks'}
+                aria-label={showSearch ? 'Close search' : 'Search tasks'}
+              >
+                {showSearch ? (
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                ) : (
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z" />
+                  </svg>
+                )}
+              </button>
+            </div>
             <div ref={userMenuRef} className="relative">
               <button
                 onClick={() => setShowUserMenu((v) => !v)}
@@ -912,7 +968,7 @@ function OtherTaskAdder({
         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
         </svg>
-        Log for Other Task
+        Log for other task
       </button>
     )
   }
