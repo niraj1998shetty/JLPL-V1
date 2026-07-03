@@ -183,16 +183,6 @@ export default function WorklogEditModal({
             ))}
           </div>
         </div>
-
-        {/* Footer */}
-        <div className="px-5 py-3 border-t border-gray-200 dark:border-gray-700 flex justify-end">
-          <button
-            onClick={onClose}
-            className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
-          >
-            Close
-          </button>
-        </div>
       </div>
 
       {/* Confirm delete dialog */}
