@@ -1,0 +1,117 @@
+import { JiraTask } from '../types/jira'
+
+export function taskMatchesSearch(task: JiraTask, searchQuery: string): boolean {
+  if (!searchQuery.trim()) return true
+  const q = searchQuery.toLowerCase()
+  return task.id.toLowerCase().includes(q) || (task.summary ?? '').toLowerCase().includes(q)
+}
+
+export function collectKnownTaskIds(tasks: JiraTask[]): Set<string> {
+  const ids = new Set<string>()
+  for (const t of tasks) {
+    ids.add(t.id)
+    for (const k of t.subtaskKeys ?? []) ids.add(k)
+    for (const s of t.subtasks ?? []) ids.add(s.id)
+  }
+  return ids
+}
+
+interface GroupTasksInput {
+  /** The user's common + assigned tasks (unfiltered by default/isDefault). */
+  tasks: JiraTask[]
+  /** Tasks the user manually added via "Log for other task". */
+  otherTasks: JiraTask[]
+  /**
+   * Tasks logged (on the relevant date, or across a range) that are already
+   * fully structured (test badge, expandable subtasks, estimates) — e.g. the
+   * day view's `loggedTasks` fetch. Omit when no such structured fetch exists
+   * (the week view has no per-range equivalent); those tasks still surface via
+   * `loggedTaskIds` as bare fallback rows.
+   */
+  structuredLoggedTasks?: JiraTask[]
+  /** Every task id that has logged hours somewhere relevant, even if not in `tasks`. */
+  loggedTaskIds: Set<string>
+  /** taskId -> summary, used to render fallback bare rows for ids not otherwise known. */
+  loggedTaskSummaries: Record<string, string>
+  searchQuery?: string
+}
+
+export interface GroupedTasks {
+  commonTasks: JiraTask[]
+  assignedTasks: JiraTask[]
+  /** Manually-added tasks plus any logged task not in common/assigned/otherTasks. */
+  otherSectionTasks: JiraTask[]
+  knownTaskIds: Set<string>
+}
+
+// Splits the user's tasks into Common/Assigned/Other sections, the same way the
+// day view always has: Common = isDefault, Assigned = the rest, and Other =
+// manually-added tasks plus any task logged against that isn't in either list
+// (so hours never go invisible even for old/foreign tasks). Shared by the day
+// and week views so both present an identical hierarchy.
+export function groupTasks({
+  tasks,
+  otherTasks,
+  structuredLoggedTasks = [],
+  loggedTaskIds,
+  loggedTaskSummaries,
+  searchQuery = '',
+}: GroupTasksInput): GroupedTasks {
+  const matches = (t: JiraTask) => taskMatchesSearch(t, searchQuery)
+
+  const commonTasks = tasks.filter((t) => t.isDefault && matches(t))
+  const assignedTasks = tasks.filter((t) => !t.isDefault && matches(t))
+
+  const knownTaskIds = collectKnownTaskIds(tasks)
+
+  const structuredExtra = structuredLoggedTasks.filter((t) => !knownTaskIds.has(t.id))
+
+  const coveredIds = new Set(knownTaskIds)
+  for (const t of structuredExtra) {
+    coveredIds.add(t.id)
+    for (const k of t.subtaskKeys ?? []) coveredIds.add(k)
+    for (const s of t.subtasks ?? []) coveredIds.add(s.id)
+  }
+
+  const fallbackExtra: JiraTask[] = [...loggedTaskIds]
+    .filter((id) => !coveredIds.has(id))
+    .map((id) => ({
+      id,
+      summary: loggedTaskSummaries[id] ?? '',
+      isDefault: false,
+      isExpandable: false,
+    }))
+
+  const extraLoggedTasks: JiraTask[] = [...structuredExtra, ...fallbackExtra]
+
+  const manualOtherTasks = otherTasks.filter((t) => !knownTaskIds.has(t.id) && matches(t))
+  const manualOtherIds = new Set(manualOtherTasks.map((t) => t.id))
+  const otherSectionTasks: JiraTask[] = [
+    ...manualOtherTasks,
+    ...extraLoggedTasks.filter((t) => !manualOtherIds.has(t.id) && matches(t)),
+  ]
+
+  return { commonTasks, assignedTasks, otherSectionTasks, knownTaskIds }
+}
+
+export interface FlatTaskRow {
+  task: JiraTask
+  depth: number
+  isSubtask: boolean
+}
+
+// Walks a top-level task list respecting expand/collapse state, returning one
+// row per visible task/subtask — used by the week grid to render the left-hand
+// task column in the same order/hierarchy as the day view's TaskSection.
+export function flattenVisibleRows(tasks: JiraTask[], expandedIds: Set<string>): FlatTaskRow[] {
+  const rows: FlatTaskRow[] = []
+  for (const task of tasks) {
+    rows.push({ task, depth: 0, isSubtask: false })
+    if (task.isExpandable && expandedIds.has(task.id)) {
+      for (const sub of task.subtasks ?? []) {
+        rows.push({ task: sub, depth: 1, isSubtask: true })
+      }
+    }
+  }
+  return rows
+}

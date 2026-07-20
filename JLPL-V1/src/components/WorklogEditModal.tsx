@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { jiraService } from '../services/jiraService'
 import { JiraTimeEntry } from '../types/jira'
+import HoursInput from './HoursInput'
 
 interface WorklogEditModalProps {
   taskId: string
@@ -267,17 +268,9 @@ function EntryRow({ entry, dayTotalHours, isSaving, isBusy, onSave, onDeleteRequ
   return (
     <div className="border border-gray-200 dark:border-gray-600 rounded-lg p-3 bg-white dark:bg-gray-700 space-y-2">
       <div className="flex items-center gap-2">
-        <input
-          type="number"
-          step="0.25"
-          min="0"
-          max="24"
-          inputMode="decimal"
+        <HoursInput
           value={hoursStr}
-          onChange={(e) => setHoursStr(e.target.value)}
-          onKeyDown={(e) => {
-            if (['-', '+', 'e', 'E'].includes(e.key)) e.preventDefault()
-          }}
+          onChange={setHoursStr}
           className={`w-16 px-2 py-1.5 text-sm text-center border rounded focus:outline-none focus:ring-1 focus:ring-jira-blue bg-white dark:bg-gray-600 dark:text-gray-100 ${
             wouldExceed
               ? 'border-red-400 dark:border-red-500'

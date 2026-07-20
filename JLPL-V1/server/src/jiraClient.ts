@@ -36,6 +36,16 @@ export interface AppTimeEntry {
   taskSummary?: string // issue summary, so the UI can render tasks not in the task list
 }
 
+// Thrown by logWorkEntriesAcrossDays when one day's submission fails after
+// others already succeeded; the successful ones have already been rolled back
+// by the time this is thrown, so the caller can report failure with no cleanup.
+export class BulkSubmitError extends Error {
+  constructor(public readonly date: string, public readonly taskId: string, public readonly cause: unknown) {
+    super(`Failed to log work for ${taskId} on ${date}`)
+    this.name = 'BulkSubmitError'
+  }
+}
+
 // ── Helpers ────────────────────────────────────────────────────────────────
 
 function secondsToHours(seconds: number | null): number | undefined {
@@ -228,13 +238,14 @@ export class JiraClient {
     return res.data.worklogs
   }
 
-  private async logWork(issueKey: string, hours: number, dateStr: string, comment?: string): Promise<void> {
+  private async logWork(issueKey: string, hours: number, dateStr: string, comment?: string): Promise<{ id: string }> {
     const body: Record<string, unknown> = {
       timeSpent: hoursToJiraTimeSpent(hours),
       started: `${dateStr}T09:00:00.000+0000`,
     }
     if (comment?.trim()) body.comment = comment.trim()
-    await this.http.post(`/issue/${issueKey}/worklog`, body)
+    const res = await this.http.post<JiraWorklog>(`/issue/${issueKey}/worklog`, body)
+    return { id: res.data.id }
   }
 
   // ── Higher-level methods used by route handlers ─────────────────────────
@@ -393,6 +404,32 @@ export class JiraClient {
     await Promise.all(entries.map((e) => this.logWork(e.taskId, e.hours, e.date, e.comment)))
   }
 
+  // Submits worklog entries across multiple days as a single all-or-nothing
+  // operation. Jira has no native multi-op transaction, so we fire every entry,
+  // and if any fail, delete every entry that *did* succeed — leaving Jira exactly
+  // as it was before the call, rather than a half-submitted week.
+  async logWorkEntriesAcrossDays(
+    days: Array<{ date: string; entries: Array<{ taskId: string; hours: number; comment?: string }> }>
+  ): Promise<void> {
+    const flat = days.flatMap((d) => d.entries.map((e) => ({ ...e, date: d.date })))
+    const results = await Promise.allSettled(
+      flat.map((e) => this.logWork(e.taskId, e.hours, e.date, e.comment))
+    )
+
+    const failedIndex = results.findIndex((r) => r.status === 'rejected')
+    if (failedIndex === -1) return
+
+    await Promise.allSettled(
+      results.map((r, i) =>
+        r.status === 'fulfilled' ? this.deleteWorklog(flat[i].taskId, r.value.id) : Promise.resolve()
+      )
+    )
+
+    const failed = flat[failedIndex]
+    const reason = (results[failedIndex] as PromiseRejectedResult).reason
+    throw new BulkSubmitError(failed.date, failed.taskId, reason)
+  }
+
   // ── Edit / delete worklog entries ──────────────────────────────────────
 
   async getTaskWorklogsOnDate(issueKey: string, dateStr: string, myUserId: string): Promise<AppTimeEntry[]> {
@@ -466,5 +503,52 @@ export class JiraClient {
       }
     }
     return totals
+  }
+
+  /**
+   * Returns one row per task+date the current user logged time on between
+   * startDateStr and endDateStr — the range equivalent of getExistingWorklogs,
+   * used to prefill the weekly grid. Same 1 JQL search + N parallel worklog
+   * fetches as getDailyTotalsInRange, but keeps the per-issue breakdown instead
+   * of collapsing it into a single daily total.
+   */
+  async getWorklogBreakdownInRange(
+    startDateStr: string,
+    endDateStr: string,
+    myUserId: string,
+  ): Promise<AppTimeEntry[]> {
+    const jql = `worklogAuthor = currentUser() AND worklogDate >= "${startDateStr}" AND worklogDate <= "${endDateStr}"`
+    const res = await this.http.get<JiraSearchResponse>('/search', {
+      params: { jql, fields: 'summary', maxResults: 200 },
+    })
+    const issues = res.data.issues
+    if (issues.length === 0) return []
+
+    const worklogResults = await Promise.allSettled(
+      issues.map((issue) => this.getWorklogs(issue.key)),
+    )
+
+    // Sum hours per (taskId, date) so multiple entries on the same task/day collapse
+    // into one grid cell, mirroring how getExistingWorklogs sums per task per day.
+    const byKey = new Map<string, AppTimeEntry>()
+    for (let i = 0; i < issues.length; i++) {
+      const result = worklogResults[i]
+      if (result.status !== 'fulfilled') continue
+      const { key, fields } = issues[i]
+      for (const wl of result.value) {
+        if (myUserId && userIdentifier(wl.author) !== myUserId) continue
+        const date = wl.started.substring(0, 10)
+        if (date < startDateStr || date > endDateStr) continue
+        const mapKey = `${key}__${date}`
+        const existing = byKey.get(mapKey)
+        const hours = Math.round((wl.timeSpentSeconds / 3600) * 100) / 100
+        if (existing) {
+          existing.hours += hours
+        } else {
+          byKey.set(mapKey, { taskId: key, date, hours, taskSummary: fields?.summary })
+        }
+      }
+    }
+    return [...byKey.values()]
   }
 }

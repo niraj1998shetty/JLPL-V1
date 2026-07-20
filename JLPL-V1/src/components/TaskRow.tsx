@@ -1,7 +1,7 @@
-import { useEffect, useRef, useState } from 'react'
-import { createPortal } from 'react-dom'
+import { useState } from 'react'
 import { JiraTask } from '../types/jira'
-import EstimatePanel from './EstimatePanel'
+import HoursInput from './HoursInput'
+import TaskInfoButton from './TaskInfoButton'
 
 interface TaskRowProps {
   task: JiraTask
@@ -40,69 +40,8 @@ export default function TaskRow({
   onToggleExpand,
   onEdit,
 }: TaskRowProps) {
-  const inputRef = useRef<HTMLInputElement>(null)
-  const infoButtonRef = useRef<HTMLButtonElement>(null)
-  const popupRef = useRef<HTMLDivElement>(null)
-  const [showPopup, setShowPopup] = useState(false)
   const [showPlaceholder, setShowPlaceholder] = useState(true)
-  const [popupPos, setPopupPos] = useState({ top: 0, left: 0 })
   const hasHours = parseFloat(hours) > 0
-
-  const hasEstimateData =
-    showEstimate &&
-    (task.estimatedHours !== undefined ||
-      task.remainingHours !== undefined ||
-      task.totalLoggedHours !== undefined ||
-      task.storyPoints !== undefined ||
-      task.updatedAt !== undefined)
-
-  function handleInfoClick(e: React.MouseEvent) {
-    e.stopPropagation()
-    if (!infoButtonRef.current) return
-    const rect = infoButtonRef.current.getBoundingClientRect()
-    setPopupPos({
-      top: rect.bottom + 6,
-      left: Math.min(rect.left - 180, window.innerWidth - 250),
-    })
-    setShowPopup((v) => !v)
-  }
-
-  function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
-    if (['-', '+', 'e', 'E'].includes(e.key)) e.preventDefault()
-  }
-
-  function handleWheel(e: React.WheelEvent<HTMLInputElement>) {
-    ;(e.currentTarget as HTMLInputElement).blur()
-  }
-
-  useEffect(() => {
-    const el = inputRef.current
-    if (!el) return
-    const handler = (e: WheelEvent) => e.preventDefault()
-    el.addEventListener('wheel', handler, { passive: false })
-    return () => el.removeEventListener('wheel', handler)
-  }, [])
-
-  useEffect(() => {
-    if (!showPopup) return
-    function onDown(e: MouseEvent) {
-      if (
-        !popupRef.current?.contains(e.target as Node) &&
-        !infoButtonRef.current?.contains(e.target as Node)
-      ) {
-        setShowPopup(false)
-      }
-    }
-    function onKey(e: KeyboardEvent) {
-      if (e.key === 'Escape') setShowPopup(false)
-    }
-    document.addEventListener('mousedown', onDown)
-    document.addEventListener('keydown', onKey)
-    return () => {
-      document.removeEventListener('mousedown', onDown)
-      document.removeEventListener('keydown', onKey)
-    }
-  }, [showPopup])
 
   function handleRowClick() {
     if (isExpandable && !isSubtask) {
@@ -165,19 +104,7 @@ export default function TaskRow({
               </span>
             )}
             <span className="text-xs text-gray-700 dark:text-gray-300 truncate">{task.summary}</span>
-            {hasEstimateData && (
-              <button
-                ref={infoButtonRef}
-                type="button"
-                onClick={handleInfoClick}
-                className="flex-shrink-0 text-gray-400 hover:text-jira-blue transition-colors"
-                aria-label="Show estimate details"
-              >
-                <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20">
-                  <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
-                </svg>
-              </button>
-            )}
+            <TaskInfoButton task={task} show={showEstimate} />
           </div>
 
           {/* Comment input */}
@@ -216,21 +143,12 @@ export default function TaskRow({
                 </svg>
               </button>
             )}
-            <input
-              ref={inputRef}
-              type="number"
-              step="0.25"
-              min="0"
-              max="24"
-              inputMode="decimal"
+            <HoursInput
               value={hours}
-              onChange={(e) => onHoursChange(task.id, e.target.value)}
-              onKeyDown={handleKeyDown}
-              onWheel={handleWheel}
+              onChange={(v) => onHoursChange(task.id, v)}
               onFocus={() => setShowPlaceholder(false)}
               onBlur={() => setShowPlaceholder(true)}
               placeholder={showPlaceholder ? "0" : ""}
-              className="w-16 px-2 py-1.5 text-sm text-center border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-jira-blue focus:border-transparent bg-white dark:bg-gray-700 dark:text-gray-100"
             />
           </div>
           {existingHours > 0 && (
@@ -243,30 +161,6 @@ export default function TaskRow({
           )}
         </div>
       </div>
-
-      {/* Estimate popup rendered via portal so it isn't clipped by overflow:hidden parents */}
-      {showPopup &&
-        hasEstimateData &&
-        createPortal(
-          <div
-            ref={popupRef}
-            className="fixed z-50 w-56 bg-white dark:bg-gray-800 rounded-xl shadow-xl border border-gray-200 dark:border-gray-700 p-3"
-            style={{ top: popupPos.top, left: popupPos.left }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500 mb-2">
-              {task.id}
-            </p>
-            <EstimatePanel
-              estimatedHours={task.estimatedHours ?? null}
-              remainingHours={task.remainingHours ?? null}
-              totalLoggedHours={task.totalLoggedHours ?? null}
-              storyPoints={task.storyPoints ?? null}
-              updatedAt={task.updatedAt ?? null}
-            />
-          </div>,
-          document.body
-        )}
     </div>
   )
 }

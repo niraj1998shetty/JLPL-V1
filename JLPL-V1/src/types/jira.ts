@@ -31,6 +31,10 @@ export interface JiraSubmitPayload {
   entries: JiraTimeEntry[]
 }
 
+export interface JiraWeekSubmitPayload {
+  days: JiraSubmitPayload[]
+}
+
 export interface AuthConfig {
   pat: string
   teams: JiraTeam[]

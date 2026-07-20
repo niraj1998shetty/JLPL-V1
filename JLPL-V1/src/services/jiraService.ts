@@ -1,5 +1,5 @@
 import axios, { AxiosInstance } from 'axios'
-import { JiraSubmitPayload, JiraTask, JiraTeam, JiraTimeEntry } from '../types/jira'
+import { JiraSubmitPayload, JiraTask, JiraTeam, JiraTimeEntry, JiraWeekSubmitPayload } from '../types/jira'
 
 const STORAGE_KEY_PAT = 'jlpl_pat'
 const STORAGE_KEY_TEAMS = 'jlpl_teams'
@@ -224,6 +224,19 @@ class JiraService {
 
   async logWork(payload: JiraSubmitPayload): Promise<void> {
     await this.client.post('/worklogs', payload)
+  }
+
+  /** Returns one row per task+date logged between startDate and endDate (inclusive). */
+  async getWorklogsRange(startDate: string, endDate: string): Promise<JiraTimeEntry[]> {
+    const res = await this.client.get<JiraTimeEntry[]>('/worklogs/range', {
+      params: { start: startDate, end: endDate },
+    })
+    return res.data
+  }
+
+  /** Submits multiple days' entries as a single all-or-nothing operation. */
+  async submitWeek(payload: JiraWeekSubmitPayload): Promise<void> {
+    await this.client.post('/worklogs/bulk', payload)
   }
 
   async getTaskWorklogs(taskId: string, dateStr: string): Promise<JiraTimeEntry[]> {

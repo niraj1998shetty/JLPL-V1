@@ -1,5 +1,5 @@
 import { Router } from 'express'
-import { JiraClient } from '../jiraClient'
+import { BulkSubmitError, JiraClient } from '../jiraClient'
 import { requireAuth } from '../middleware'
 
 function extractJiraMessage(data: unknown): string {
@@ -118,6 +118,71 @@ router.get('/month', requireAuth, async (req, res) => {
     res.json(totals)
   } catch (err: unknown) {
     handleJiraError(err, res, 'worklogs GET month')
+  }
+})
+
+// GET /worklogs/range?start=YYYY-MM-DD&end=YYYY-MM-DD
+// Returns one row per task+date logged in the range — the range equivalent of
+// GET /worklogs, used to prefill the weekly grid.
+router.get('/range', requireAuth, async (req, res) => {
+  const startDate = req.query.start as string
+  const endDate = req.query.end as string
+  if (!startDate || !endDate || !/^\d{4}-\d{2}-\d{2}$/.test(startDate) || !/^\d{4}-\d{2}-\d{2}$/.test(endDate)) {
+    res.status(400).json({ error: 'Query params "start" and "end" must be YYYY-MM-DD.' })
+    return
+  }
+
+  const client = new JiraClient(req.pat!)
+  try {
+    const myself = await client.getMyself()
+    const myUserId = myself.accountId ?? myself.name ?? myself.key ?? ''
+    const entries = await client.getWorklogBreakdownInRange(startDate, endDate, myUserId)
+    res.json(entries)
+  } catch (err: unknown) {
+    handleJiraError(err, res, 'worklogs GET range')
+  }
+})
+
+// POST /worklogs/bulk
+// Body: { days: Array<{ date: string; entries: Array<{ taskId, hours, comment? }> }> }
+// All-or-nothing: if any day's entries fail to submit, everything already
+// submitted in this request is rolled back before the error is returned.
+router.post('/bulk', requireAuth, async (req, res) => {
+  const { days } = req.body as {
+    days?: Array<{ date?: string; entries?: Array<{ taskId: string; hours: number; comment?: string }> }>
+  }
+
+  if (!Array.isArray(days) || days.length === 0) {
+    res.status(400).json({ error: 'Body must include a non-empty "days" array.' })
+    return
+  }
+  for (const day of days) {
+    if (!day.date || !/^\d{4}-\d{2}-\d{2}$/.test(day.date)) {
+      res.status(400).json({ error: 'Each day must have a "date" in YYYY-MM-DD format.' })
+      return
+    }
+    if (!Array.isArray(day.entries) || day.entries.length === 0) {
+      res.status(400).json({ error: `Day ${day.date} must have a non-empty "entries" array.` })
+      return
+    }
+    const invalid = day.entries.find((e) => !e.taskId || !e.hours || e.hours <= 0)
+    if (invalid) {
+      res.status(400).json({ error: 'Each entry must have a taskId and hours > 0.' })
+      return
+    }
+  }
+
+  const client = new JiraClient(req.pat!)
+  try {
+    await client.logWorkEntriesAcrossDays(days as Array<{ date: string; entries: Array<{ taskId: string; hours: number; comment?: string }> }>)
+    res.status(204).send()
+  } catch (err: unknown) {
+    if (err instanceof BulkSubmitError) {
+      console.error('[worklogs POST bulk] rolled back after failure', err.date, err.taskId, err.cause)
+      res.status(502).json({ error: `Failed to log work for ${err.taskId} on ${err.date}. Nothing was submitted — please try again.` })
+      return
+    }
+    handleJiraError(err, res, 'worklogs POST bulk')
   }
 })
 
