@@ -36,12 +36,12 @@ function isFutureDate(date: Date): boolean {
   return date > endOfToday
 }
 
-// Worklogs can be edited for up to 14 days back (inclusive of today) — same rule the day view uses.
+// Worklogs can be edited for up to 30 days back (inclusive of today) — same rule the day view uses.
 function isEditableDate(date: Date): boolean {
   const today = new Date()
   today.setHours(23, 59, 59, 999)
   const cutoff = new Date()
-  cutoff.setDate(cutoff.getDate() - 14)
+  cutoff.setDate(cutoff.getDate() - 30)
   cutoff.setHours(0, 0, 0, 0)
   return date <= today && date >= cutoff
 }
