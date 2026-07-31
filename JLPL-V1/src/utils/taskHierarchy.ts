@@ -1,4 +1,5 @@
 import { JiraTask } from '../types/jira'
+import { DuplicateMap } from './duplicateRows'
 
 export function taskMatchesSearch(task: JiraTask, searchQuery: string): boolean {
   if (!searchQuery.trim()) return true
@@ -98,19 +99,36 @@ export interface FlatTaskRow {
   task: JiraTask
   depth: number
   isSubtask: boolean
+  /** Key this row's hours/comment live under. Equals `task.id` for primary rows. */
+  rowKey: string
+  /** A second (third, …) entry for the same task: own hours/comment, never expandable. */
+  isDuplicate: boolean
 }
 
 // Walks a top-level task list respecting expand/collapse state, returning one
 // row per visible task/subtask — used by the week grid to render the left-hand
 // task column in the same order/hierarchy as the day view's TaskSection.
-export function flattenVisibleRows(tasks: JiraTask[], expandedIds: Set<string>): FlatTaskRow[] {
+export function flattenVisibleRows(
+  tasks: JiraTask[],
+  expandedIds: Set<string>,
+  duplicates: DuplicateMap = {}
+): FlatTaskRow[] {
   const rows: FlatTaskRow[] = []
+
+  // A row plus its duplicates, which sit directly beneath it at the same indent —
+  // they're sibling entries for the same task, not children, so they carry no
+  // subtasks of their own and stay visible whether or not the task is expanded.
+  function push(task: JiraTask, depth: number, isSubtask: boolean) {
+    rows.push({ task, depth, isSubtask, rowKey: task.id, isDuplicate: false })
+    for (const rowKey of duplicates[task.id] ?? []) {
+      rows.push({ task, depth, isSubtask, rowKey, isDuplicate: true })
+    }
+  }
+
   for (const task of tasks) {
-    rows.push({ task, depth: 0, isSubtask: false })
+    push(task, 0, false)
     if (task.isExpandable && expandedIds.has(task.id)) {
-      for (const sub of task.subtasks ?? []) {
-        rows.push({ task: sub, depth: 1, isSubtask: true })
-      }
+      for (const sub of task.subtasks ?? []) push(sub, 1, true)
     }
   }
   return rows

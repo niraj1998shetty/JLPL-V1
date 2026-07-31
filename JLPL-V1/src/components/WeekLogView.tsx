@@ -1,6 +1,13 @@
 import { useEffect, useRef, useState } from 'react'
 import { jiraService } from '../services/jiraService'
 import { JiraTask, JiraTimeEntry } from '../types/jira'
+import {
+  DuplicateMap,
+  addDuplicate,
+  removeDuplicate,
+  rowKeysForTask,
+  taskIdFromRowKey,
+} from '../utils/duplicateRows'
 import { FlatTaskRow, flattenVisibleRows, groupTasks } from '../utils/taskHierarchy'
 import { WeekRange, formatDateForApi, formatWeekRangeLabel, getWeekRange, isSameWeek, isToday, isWeekendDay } from '../utils/week'
 import ConfirmDialog from './ConfirmDialog'
@@ -11,15 +18,22 @@ import TaskInfoButton from './TaskInfoButton'
 import WeekNav from './WeekNav'
 import WorklogEditModal from './WorklogEditModal'
 
-type SessionMap = Record<string, string> // key: `${taskId}__${dateStr}`
+type SessionMap = Record<string, string> // key: `${rowKey}__${dateStr}`
 
 const DAY_COL_CLASS = 'w-16 sm:w-[72px] flex-shrink-0 border-l border-gray-100 dark:border-gray-700'
 // Uncapped flex-1, matching the day view's Task column — it absorbs all width left
 // over after the fixed-width day columns instead of leaving it blank.
 const LABEL_COL_CLASS = 'flex-1 min-w-[180px]'
 
-function cellKey(taskId: string, dateStr: string): string {
-  return `${taskId}__${dateStr}`
+// A cell is identified by row (not task) and date, so a task with duplicate rows
+// gets an independent set of seven cells per extra row.
+function cellKey(rowKey: string, dateStr: string): string {
+  return `${rowKey}__${dateStr}`
+}
+
+function parseCellKey(key: string): { rowKey: string; dateStr: string } {
+  const i = key.lastIndexOf('__')
+  return { rowKey: key.slice(0, i), dateStr: key.slice(i + 2) }
 }
 
 // Today takes priority over the weekend tint when today happens to fall on a
@@ -64,6 +78,9 @@ export default function WeekLogView({ tasks, setTasks, searchQuery, selectedDate
   const [expandingTaskId, setExpandingTaskId] = useState<string | null>(null)
   const [hours, setHours] = useState<SessionMap>({})
   const [comments, setComments] = useState<SessionMap>({})
+  // Extra logging rows for tasks the user is logging more than once in a session.
+  // A duplicate spans the whole visible week, same as the row it came from.
+  const [duplicates, setDuplicates] = useState<DuplicateMap>({})
   const [existingByTaskDate, setExistingByTaskDate] = useState<Record<string, Record<string, number>>>({})
   const [rangeTaskSummaries, setRangeTaskSummaries] = useState<Record<string, string>>({})
   // Tasks manually added via "Log for other task" — span the whole visible week.
@@ -93,6 +110,7 @@ export default function WeekLogView({ tasks, setTasks, searchQuery, selectedDate
     setExpandedIds(new Set())
     setHours({})
     setComments({})
+    setDuplicates({})
     setExistingByTaskDate({})
     setRangeTaskSummaries({})
     setOtherTasks([])
@@ -130,6 +148,8 @@ export default function WeekLogView({ tasks, setTasks, searchQuery, selectedDate
   const loggedTaskIds = new Set(
     Object.keys(existingByTaskDate).filter((id) => Object.values(existingByTaskDate[id]).some((h) => h > 0))
   )
+
+  const visibleRows = (list: JiraTask[]) => flattenVisibleRows(list, expandedIds, duplicates)
 
   const { commonTasks, assignedTasks, otherSectionTasks, knownTaskIds } = groupTasks({
     tasks,
@@ -187,12 +207,31 @@ export default function WeekLogView({ tasks, setTasks, searchQuery, selectedDate
     }
   }
 
-  function handleHoursChange(taskId: string, dateStr: string, val: string) {
-    setHours((prev) => ({ ...prev, [cellKey(taskId, dateStr)]: val }))
+  function handleHoursChange(rowKey: string, dateStr: string, val: string) {
+    setHours((prev) => ({ ...prev, [cellKey(rowKey, dateStr)]: val }))
   }
 
-  function handleCommentChange(taskId: string, dateStr: string, val: string) {
-    setComments((prev) => ({ ...prev, [cellKey(taskId, dateStr)]: val }))
+  function handleCommentChange(rowKey: string, dateStr: string, val: string) {
+    setComments((prev) => ({ ...prev, [cellKey(rowKey, dateStr)]: val }))
+  }
+
+  function handleDuplicate(taskId: string) {
+    setDuplicates((prev) => addDuplicate(prev, taskId).next)
+  }
+
+  // Clears all seven of the row's cells along with the row, so removing a duplicate
+  // can't leave invisible hours in the week total or the submission.
+  function handleRemoveDuplicate(taskId: string, rowKey: string) {
+    setDuplicates((prev) => removeDuplicate(prev, taskId, rowKey))
+    const drop = (prev: SessionMap) => {
+      const next: SessionMap = {}
+      for (const [k, v] of Object.entries(prev)) {
+        if (parseCellKey(k).rowKey !== rowKey) next[k] = v
+      }
+      return next
+    }
+    setHours(drop)
+    setComments(drop)
   }
 
   function navigateWeek(dir: -1 | 1) {
@@ -282,10 +321,15 @@ export default function WeekLogView({ tasks, setTasks, searchQuery, selectedDate
       const byDate = new Map<string, JiraTimeEntry[]>()
       for (const [key, v] of Object.entries(hours)) {
         if (v === '' || Number(v) <= 0) continue
-        const sepIdx = key.lastIndexOf('__')
-        const taskId = key.slice(0, sepIdx)
-        const dateStr = key.slice(sepIdx + 2)
-        const entry: JiraTimeEntry = { taskId, hours: Number(v), date: dateStr, comment: comments[key] || undefined }
+        const { rowKey, dateStr } = parseCellKey(key)
+        // Duplicate rows collapse back to their underlying task here, so two rows on
+        // the same task and day submit as two separate Jira worklogs.
+        const entry: JiraTimeEntry = {
+          taskId: taskIdFromRowKey(rowKey),
+          hours: Number(v),
+          date: dateStr,
+          comment: comments[key] || undefined,
+        }
         byDate.set(dateStr, [...(byDate.get(dateStr) ?? []), entry])
       }
       const days = [...byDate.entries()].map(([date, entries]) => ({ date, entries }))
@@ -294,6 +338,7 @@ export default function WeekLogView({ tasks, setTasks, searchQuery, selectedDate
 
       setHours({})
       setComments({})
+      setDuplicates({})
       setOtherTaskError('')
       setSuccessMsg(`Successfully logged ${sessionHours.toFixed(2).replace(/\.?0+$/, '')}h`)
       await loadRange(rangeStart, rangeEnd)
@@ -347,13 +392,14 @@ export default function WeekLogView({ tasks, setTasks, searchQuery, selectedDate
             {commonTasks.length > 0 && (
               <section>
                 <GroupHeader label="Common Tasks" />
-                {flattenVisibleRows(commonTasks, expandedIds).map((row) => (
+                {visibleRows(commonTasks).map((row) => (
                   <WeekTaskRow
-                    key={`${row.task.id}-${row.isSubtask}`}
+                    key={`${row.rowKey}-${row.isSubtask}`}
                     row={row}
                     range={range}
                     hours={hours}
                     comments={comments}
+                    duplicates={duplicates}
                     existingByTaskDate={existingByTaskDate}
                     expandingTaskId={expandingTaskId}
                     isExpanded={expandedIds.has(row.task.id)}
@@ -362,6 +408,8 @@ export default function WeekLogView({ tasks, setTasks, searchQuery, selectedDate
                     onCommentChange={handleCommentChange}
                     onToggleExpand={handleToggleExpand}
                     onEditCell={handleEditCell}
+                    onDuplicate={handleDuplicate}
+                    onRemoveDuplicate={handleRemoveDuplicate}
                   />
                 ))}
               </section>
@@ -370,13 +418,14 @@ export default function WeekLogView({ tasks, setTasks, searchQuery, selectedDate
             {assignedTasks.length > 0 && (
               <section>
                 <GroupHeader label="Assigned Tasks" />
-                {flattenVisibleRows(assignedTasks, expandedIds).map((row) => (
+                {visibleRows(assignedTasks).map((row) => (
                   <WeekTaskRow
-                    key={`${row.task.id}-${row.isSubtask}`}
+                    key={`${row.rowKey}-${row.isSubtask}`}
                     row={row}
                     range={range}
                     hours={hours}
                     comments={comments}
+                    duplicates={duplicates}
                     existingByTaskDate={existingByTaskDate}
                     expandingTaskId={expandingTaskId}
                     isExpanded={expandedIds.has(row.task.id)}
@@ -385,6 +434,8 @@ export default function WeekLogView({ tasks, setTasks, searchQuery, selectedDate
                     onCommentChange={handleCommentChange}
                     onToggleExpand={handleToggleExpand}
                     onEditCell={handleEditCell}
+                    onDuplicate={handleDuplicate}
+                    onRemoveDuplicate={handleRemoveDuplicate}
                   />
                 ))}
               </section>
@@ -393,13 +444,14 @@ export default function WeekLogView({ tasks, setTasks, searchQuery, selectedDate
             {(otherSectionTasks.length > 0 || canAddOtherTask) && (
               <section>
                 <GroupHeader label="Other Tasks" />
-                {flattenVisibleRows(otherSectionTasks, expandedIds).map((row) => (
+                {visibleRows(otherSectionTasks).map((row) => (
                   <WeekTaskRow
-                    key={`${row.task.id}-${row.isSubtask}`}
+                    key={`${row.rowKey}-${row.isSubtask}`}
                     row={row}
                     range={range}
                     hours={hours}
                     comments={comments}
+                    duplicates={duplicates}
                     existingByTaskDate={existingByTaskDate}
                     expandingTaskId={expandingTaskId}
                     isExpanded={expandedIds.has(row.task.id)}
@@ -408,6 +460,8 @@ export default function WeekLogView({ tasks, setTasks, searchQuery, selectedDate
                     onCommentChange={handleCommentChange}
                     onToggleExpand={handleToggleExpand}
                     onEditCell={handleEditCell}
+                    onDuplicate={handleDuplicate}
+                    onRemoveDuplicate={handleRemoveDuplicate}
                   />
                 ))}
                 {canAddOtherTask && (
@@ -504,14 +558,17 @@ interface WeekTaskRowProps {
   range: WeekRange
   hours: SessionMap
   comments: SessionMap
+  duplicates: DuplicateMap
   existingByTaskDate: Record<string, Record<string, number>>
   expandingTaskId: string | null
   isExpanded: boolean
   showEstimate: boolean
-  onHoursChange: (taskId: string, dateStr: string, v: string) => void
-  onCommentChange: (taskId: string, dateStr: string, v: string) => void
+  onHoursChange: (rowKey: string, dateStr: string, v: string) => void
+  onCommentChange: (rowKey: string, dateStr: string, v: string) => void
   onToggleExpand: (taskId: string) => void
   onEditCell: (taskId: string, date: Date) => void
+  onDuplicate: (taskId: string) => void
+  onRemoveDuplicate: (taskId: string, rowKey: string) => void
 }
 
 function WeekTaskRow({
@@ -519,6 +576,7 @@ function WeekTaskRow({
   range,
   hours,
   comments,
+  duplicates,
   existingByTaskDate,
   expandingTaskId,
   isExpanded,
@@ -527,21 +585,48 @@ function WeekTaskRow({
   onCommentChange,
   onToggleExpand,
   onEditCell,
+  onDuplicate,
+  onRemoveDuplicate,
 }: WeekTaskRowProps) {
-  const { task, isSubtask } = row
+  const { task, isSubtask, rowKey, isDuplicate } = row
   const rowBg = isSubtask ? 'bg-gray-100 dark:bg-gray-700/50' : 'bg-white dark:bg-gray-800'
+  // A duplicated parent is just another entry against the parent itself, so it never
+  // expands and never carries the children of the row it was created from.
+  const canExpand = task.isExpandable && !isSubtask && !isDuplicate
+
+  // The duplicate button only shows while the row is actually being logged against —
+  // some cell of it holds focus, or the week already has hours typed into it. Focus is
+  // read at the row level (focusin/focusout bubble) so tabbing between the row's own
+  // cells doesn't flicker the button away.
+  const [hasFocus, setHasFocus] = useState(false)
+  const hasSessionHours = range.days.some(
+    (d) => parseFloat(hours[cellKey(rowKey, formatDateForApi(d))] ?? '') > 0
+  )
+  const isLogging = hasFocus || hasSessionHours
 
   return (
-    <div className={`flex items-stretch border-b border-gray-100 dark:border-gray-700 last:border-0 ${rowBg}`}>
+    <div
+      className={`flex items-stretch border-b border-gray-100 dark:border-gray-700 last:border-0 ${rowBg}`}
+      onFocus={() => setHasFocus(true)}
+      onBlur={(e) => {
+        if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setHasFocus(false)
+      }}
+    >
       <div
         className={`sticky left-0 z-10 ${rowBg} ${LABEL_COL_CLASS} flex items-start gap-1.5 py-2 ${
           isSubtask ? 'pl-9 pr-2' : 'pl-3 pr-2'
-        } ${task.isExpandable && !isSubtask ? 'cursor-pointer hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors' : ''}`}
+        } ${canExpand ? 'cursor-pointer hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors' : ''}`}
         onClick={() => {
-          if (task.isExpandable && !isSubtask) onToggleExpand(task.id)
+          if (canExpand) onToggleExpand(task.id)
         }}
       >
-        {task.isExpandable && !isSubtask ? (
+        {isDuplicate ? (
+          <div className="w-4 mt-0.5 flex-shrink-0 text-gray-300 dark:text-gray-600" aria-hidden="true">
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v8a4 4 0 004 4h11m0 0l-4-4m4 4l-4 4" />
+            </svg>
+          </div>
+        ) : canExpand ? (
           expandingTaskId === task.id ? (
             <svg className="animate-spin h-4 w-4 mt-0.5 flex-shrink-0 text-gray-400" fill="none" viewBox="0 0 24 24">
               <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
@@ -566,25 +651,70 @@ function WeekTaskRow({
               href={`https://jira.eg.dk/browse/${task.id}`}
               target="_blank"
               rel="noopener noreferrer"
-              className="text-xs font-bold text-jira-blue hover:underline flex-shrink-0"
+              className={`text-xs font-bold hover:underline flex-shrink-0 ${
+                isDuplicate ? 'text-jira-blue/60' : 'text-jira-blue'
+              }`}
               onClick={(e) => e.stopPropagation()}
             >
               {task.id}
             </a>
-            {task.taskType === 'test' && (
-              <span className="text-[9px] font-bold tracking-wide px-1.5 py-0.5 rounded bg-amber-200 text-amber-900 border border-amber-300 flex-shrink-0">
-                TEST
-              </span>
+            {isDuplicate ? (
+              <>
+                <span className="text-[10px] text-gray-400 dark:text-gray-500 italic truncate">extra entry</span>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    onRemoveDuplicate(task.id, rowKey)
+                  }}
+                  className="flex-shrink-0 text-gray-400 hover:text-red-500 transition-colors"
+                  aria-label="Remove this entry"
+                  title="Remove this entry"
+                >
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </>
+            ) : (
+              <>
+                {task.taskType === 'test' && (
+                  <span className="text-[9px] font-bold tracking-wide px-1.5 py-0.5 rounded bg-amber-200 text-amber-900 border border-amber-300 flex-shrink-0">
+                    TEST
+                  </span>
+                )}
+                <span className="text-xs text-gray-700 dark:text-gray-300 truncate">{task.summary}</span>
+                <TaskInfoButton task={task} show={showEstimate} />
+                {isLogging && (
+                  <button
+                    type="button"
+                    // Without this the mousedown blurs the cell being logged, which hides
+                    // the button before the click lands on it.
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      onDuplicate(task.id)
+                    }}
+                    className="flex-shrink-0 text-gray-400 hover:text-jira-blue transition-colors"
+                    aria-label="Log another entry for this task"
+                    title="Log another entry for this task"
+                  >
+                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M8 8V5.5A2.5 2.5 0 0110.5 3h8A2.5 2.5 0 0121 5.5v8a2.5 2.5 0 01-2.5 2.5H16" />
+                      <rect x="3" y="8" width="13" height="13" rx="2.5" />
+                      <path strokeLinecap="round" d="M9.5 12v5M7 14.5h5" />
+                    </svg>
+                  </button>
+                )}
+              </>
             )}
-            <span className="text-xs text-gray-700 dark:text-gray-300 truncate">{task.summary}</span>
-            <TaskInfoButton task={task} show={showEstimate} />
           </div>
         </div>
       </div>
 
       {range.days.map((d) => {
         const dateStr = formatDateForApi(d)
-        const key = cellKey(task.id, dateStr)
+        const key = cellKey(rowKey, dateStr)
         const ownExisting = existingByTaskDate[task.id]?.[dateStr] ?? 0
 
         // Collapsed parents roll up subtask hours (both already-logged and unsaved
@@ -592,14 +722,17 @@ function WeekTaskRow({
         // don't silently disappear from view when a parent is collapsed.
         let existingHours = ownExisting
         let pendingChildHours = 0
-        if (!isSubtask && task.isExpandable && !isExpanded) {
+        if (canExpand && !isExpanded) {
           const childIds = new Set<string>([
             ...(task.subtasks ?? []).map((s) => s.id),
             ...(task.subtaskKeys ?? []),
           ])
           for (const childId of childIds) {
             existingHours += existingByTaskDate[childId]?.[dateStr] ?? 0
-            pendingChildHours += parseFloat(hours[cellKey(childId, dateStr)] ?? '') || 0
+            // A child may have duplicate rows of its own; roll up every one of them.
+            for (const childRowKey of rowKeysForTask(duplicates, childId)) {
+              pendingChildHours += parseFloat(hours[cellKey(childRowKey, dateStr)] ?? '') || 0
+            }
           }
         }
 
@@ -607,13 +740,15 @@ function WeekTaskRow({
           <WeekDayCell
             key={dateStr}
             date={d}
-            existingHours={existingHours}
-            ownExistingHours={ownExisting}
+            // Already-logged hours and the edit pencil describe the task as a whole, so
+            // they stay on the primary row rather than repeating on every extra entry.
+            existingHours={isDuplicate ? 0 : existingHours}
+            ownExistingHours={isDuplicate ? 0 : ownExisting}
             pendingChildHours={pendingChildHours}
             sessionValue={hours[key] ?? ''}
             sessionComment={comments[key] ?? ''}
-            onSessionChange={(v) => onHoursChange(task.id, dateStr, v)}
-            onCommentChange={(v) => onCommentChange(task.id, dateStr, v)}
+            onSessionChange={(v) => onHoursChange(rowKey, dateStr, v)}
+            onCommentChange={(v) => onCommentChange(rowKey, dateStr, v)}
             onEditClick={() => onEditCell(task.id, d)}
           />
         )

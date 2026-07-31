@@ -104,17 +104,18 @@ export default function DashboardPage() {
   }
 
   const showJumpButton = effectiveViewMode === 'day' ? !isToday(selectedDate) : !isSameWeek(selectedDate, new Date())
+  // The header sits on its own full-bleed bar, so it has to opt into the same width as
+  // the view below it or the two stop lining up — the week grid is the wider of the two.
+  const contentWidthClass = effectiveViewMode === 'week' ? 'max-w-6xl' : 'max-w-3xl'
 
   return (
     <div className="h-screen bg-gray-50 dark:bg-gray-900 flex flex-col overflow-hidden">
       {/* Header */}
       <header className="bg-jira-navy text-white shadow-md flex-shrink-0">
-        <div className="max-w-3xl mx-auto px-4 py-3 flex items-center justify-between">
+        <div className={`${contentWidthClass} mx-auto px-4 py-3 flex items-center justify-between`}>
           <div className="flex items-center gap-2">
-            <div className="w-8 h-8 bg-white/20 rounded-lg flex items-center justify-center">
-              <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 14H9V8h2v8zm4 0h-2V8h2v8z" />
-              </svg>
+            <div className="w-8 h-8 bg-white rounded-lg flex items-center justify-center overflow-hidden">
+              <img src="/logo.png" alt="Jira Logging Pvt Ltd" className="w-full h-full object-contain p-0.5" />
             </div>
             <div>
               <h1 className="font-bold text-sm leading-tight hidden sm:block">Jira Logging Pvt Ltd</h1>
@@ -245,7 +246,7 @@ export default function DashboardPage() {
       </header>
 
       {/* Main content */}
-      <div className={`flex-1 flex flex-col w-full min-h-0 mx-auto ${effectiveViewMode === 'week' ? 'max-w-6xl' : 'max-w-3xl'}`}>
+      <div className={`flex-1 flex flex-col w-full min-h-0 mx-auto ${contentWidthClass}`}>
         {/* Loading state */}
         {isLoadingTasks && (
           <div className="flex flex-col items-center justify-center py-16 text-gray-400 dark:text-gray-500 gap-3">

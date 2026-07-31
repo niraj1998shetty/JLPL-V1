@@ -1,6 +1,14 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { Fragment, useCallback, useEffect, useRef, useState } from 'react'
 import { jiraService } from '../services/jiraService'
 import { JiraTask, JiraTimeEntry } from '../types/jira'
+import {
+  DuplicateMap,
+  addDuplicate,
+  isDuplicateRowKey,
+  removeDuplicate,
+  rowKeysForTask,
+  taskIdFromRowKey,
+} from '../utils/duplicateRows'
 import { groupTasks } from '../utils/taskHierarchy'
 import { formatDateForApi } from '../utils/week'
 import ConfirmDialog from './ConfirmDialog'
@@ -11,8 +19,20 @@ import SummaryBar from './SummaryBar'
 import TaskRow from './TaskRow'
 import WorklogEditModal from './WorklogEditModal'
 
+// Both keyed by row key, not task id — a task with duplicate rows has one entry
+// per row. See utils/duplicateRows.
 type HoursMap = Record<string, string>
 type CommentMap = Record<string, string>
+
+// Blanks every primary row and drops duplicate rows entirely — duplicates are
+// session-scoped, so they don't survive a date change or a submit.
+function clearSessionMap(prev: Record<string, string>): Record<string, string> {
+  const next: Record<string, string> = {}
+  for (const k of Object.keys(prev)) {
+    if (!isDuplicateRowKey(k)) next[k] = ''
+  }
+  return next
+}
 
 function isToday(date: Date): boolean {
   const today = new Date()
@@ -37,6 +57,9 @@ export default function DayLogView({ tasks, setTasks, searchQuery, selectedDate,
   const [expandingTaskId, setExpandingTaskId] = useState<string | null>(null)
   const [hours, setHours] = useState<HoursMap>({})
   const [comments, setComments] = useState<CommentMap>({})
+  // Extra logging rows the user added for a task they're logging twice in one
+  // session (e.g. 0.5h "Yoga" plus 1h "Training" on the same internal task).
+  const [duplicates, setDuplicates] = useState<DuplicateMap>({})
   const [existingWorklogs, setExistingWorklogs] = useState<Record<string, number>>({})
   // Fully-structured tasks the user logged time on this day (test badge, expandable
   // subtasks, estimates), so an old task logged a month ago renders like an assigned
@@ -96,16 +119,9 @@ export default function DayLogView({ tasks, setTasks, searchQuery, selectedDate,
   // picker, or the header's "Today" button.
   useEffect(() => {
     setExpandedIds(new Set())
-    setHours((prev) => {
-      const next: HoursMap = {}
-      for (const k of Object.keys(prev)) next[k] = ''
-      return next
-    })
-    setComments((prev) => {
-      const next: CommentMap = {}
-      for (const k of Object.keys(prev)) next[k] = ''
-      return next
-    })
+    setHours(clearSessionMap)
+    setComments(clearSessionMap)
+    setDuplicates({})
     setExistingWorklogs({})
     setLoggedTasks([])
     setLoggedTaskSummaries({})
@@ -230,12 +246,29 @@ export default function DayLogView({ tasks, setTasks, searchQuery, selectedDate,
     return own + subtaskHours + subtaskKeyHours
   }
 
-  function handleHoursChange(taskId: string, val: string) {
-    setHours((prev) => ({ ...prev, [taskId]: val }))
+  function handleHoursChange(rowKey: string, val: string) {
+    setHours((prev) => ({ ...prev, [rowKey]: val }))
   }
 
-  function handleCommentChange(taskId: string, val: string) {
-    setComments((prev) => ({ ...prev, [taskId]: val }))
+  function handleCommentChange(rowKey: string, val: string) {
+    setComments((prev) => ({ ...prev, [rowKey]: val }))
+  }
+
+  function handleDuplicate(taskId: string) {
+    setDuplicates((prev) => addDuplicate(prev, taskId).next)
+  }
+
+  // Drops the row's pending hours along with the row itself, so removing a
+  // duplicate can't leave invisible hours in the session total or the submission.
+  function handleRemoveDuplicate(taskId: string, rowKey: string) {
+    setDuplicates((prev) => removeDuplicate(prev, taskId, rowKey))
+    const drop = (prev: Record<string, string>) => {
+      const next = { ...prev }
+      delete next[rowKey]
+      return next
+    }
+    setHours(drop)
+    setComments(drop)
   }
 
   function navigateDate(dir: -1 | 1) {
@@ -371,16 +404,9 @@ export default function DayLogView({ tasks, setTasks, searchQuery, selectedDate,
   }
 
   function resetSubmittedSession() {
-    setHours((prev) => {
-      const next: HoursMap = {}
-      for (const k of Object.keys(prev)) next[k] = ''
-      return next
-    })
-    setComments((prev) => {
-      const next: CommentMap = {}
-      for (const k of Object.keys(prev)) next[k] = ''
-      return next
-    })
+    setHours(clearSessionMap)
+    setComments(clearSessionMap)
+    setDuplicates({})
     setOtherTaskError('')
   }
 
@@ -422,13 +448,15 @@ export default function DayLogView({ tasks, setTasks, searchQuery, selectedDate,
     setShowConfirm(false)
     setIsSubmitting(true)
     try {
+      // Duplicate rows collapse back to their underlying task here, so two rows on
+      // the same task submit as two separate Jira worklogs.
       const entries: JiraTimeEntry[] = Object.entries(hours)
         .filter(([, v]) => v !== '' && Number(v) > 0)
-        .map(([taskId, v]) => ({
-          taskId,
+        .map(([rowKey, v]) => ({
+          taskId: taskIdFromRowKey(rowKey),
           hours: Number(v),
           date: formatDateForApi(selectedDate),
-          comment: comments[taskId] || undefined,
+          comment: comments[rowKey] || undefined,
         }))
 
       await jiraService.logWork({ date: formatDateForApi(selectedDate), entries })
@@ -494,6 +522,7 @@ export default function DayLogView({ tasks, setTasks, searchQuery, selectedDate,
                   task={task}
                   hours={hours}
                   comments={comments}
+                  duplicates={duplicates}
                   existingWorklogs={existingWorklogs}
                   expandedIds={expandedIds}
                   expandingTaskId={expandingTaskId}
@@ -504,6 +533,8 @@ export default function DayLogView({ tasks, setTasks, searchQuery, selectedDate,
                   showEstimate={false}
                   canEdit={canEditSelectedDate}
                   onEdit={handleEditTask}
+                  onDuplicate={handleDuplicate}
+                  onRemoveDuplicate={handleRemoveDuplicate}
                 />
               ))}
             </section>
@@ -518,6 +549,7 @@ export default function DayLogView({ tasks, setTasks, searchQuery, selectedDate,
                   task={task}
                   hours={hours}
                   comments={comments}
+                  duplicates={duplicates}
                   existingWorklogs={existingWorklogs}
                   expandedIds={expandedIds}
                   expandingTaskId={expandingTaskId}
@@ -528,6 +560,8 @@ export default function DayLogView({ tasks, setTasks, searchQuery, selectedDate,
                   showEstimate={true}
                   canEdit={canEditSelectedDate}
                   onEdit={handleEditTask}
+                  onDuplicate={handleDuplicate}
+                  onRemoveDuplicate={handleRemoveDuplicate}
                 />
               ))}
             </section>
@@ -546,6 +580,7 @@ export default function DayLogView({ tasks, setTasks, searchQuery, selectedDate,
                   task={task}
                   hours={hours}
                   comments={comments}
+                  duplicates={duplicates}
                   existingWorklogs={existingWorklogs}
                   expandedIds={expandedIds}
                   expandingTaskId={expandingTaskId}
@@ -556,6 +591,8 @@ export default function DayLogView({ tasks, setTasks, searchQuery, selectedDate,
                   showEstimate={true}
                   canEdit={canEditSelectedDate}
                   onEdit={handleEditTask}
+                  onDuplicate={handleDuplicate}
+                  onRemoveDuplicate={handleRemoveDuplicate}
                 />
               ))}
               {canEditSelectedDate && (
@@ -619,15 +656,18 @@ interface TaskSectionProps {
   task: JiraTask
   hours: HoursMap
   comments: CommentMap
+  duplicates: DuplicateMap
   existingWorklogs: Record<string, number>
   expandedIds: Set<string>
   expandingTaskId: string | null
   showEstimate: boolean
   canEdit?: boolean
-  onHoursChange: (id: string, v: string) => void
-  onCommentChange: (id: string, v: string) => void
+  onHoursChange: (rowKey: string, v: string) => void
+  onCommentChange: (rowKey: string, v: string) => void
   onToggleExpand: (id: string) => void
   onEdit?: (id: string) => void
+  onDuplicate: (id: string) => void
+  onRemoveDuplicate: (id: string, rowKey: string) => void
   getCollapsedExistingHours: (task: JiraTask) => number
 }
 
@@ -635,6 +675,7 @@ function TaskSection({
   task,
   hours,
   comments,
+  duplicates,
   existingWorklogs,
   expandedIds,
   expandingTaskId,
@@ -644,6 +685,8 @@ function TaskSection({
   onCommentChange,
   onToggleExpand,
   onEdit,
+  onDuplicate,
+  onRemoveDuplicate,
   getCollapsedExistingHours,
 }: TaskSectionProps) {
   const isExpanded = expandedIds.has(task.id)
@@ -662,14 +705,38 @@ function TaskSection({
       ...(task.subtaskKeys ?? []),
     ])
     for (const id of childIds) {
-      pendingChildHours += parseFloat(hours[id] ?? '') || 0
+      // A child may itself have duplicate rows; the badge is the total across all of them.
+      for (const rowKey of rowKeysForTask(duplicates, id)) {
+        pendingChildHours += parseFloat(hours[rowKey] ?? '') || 0
+      }
     }
   }
+
+  // Duplicates of a task render directly beneath it as plain rows — a duplicated
+  // parent deliberately carries none of its children, it's just another entry
+  // against the parent itself.
+  const renderDuplicates = (parent: JiraTask, isSubtask: boolean) =>
+    (duplicates[parent.id] ?? []).map((rowKey) => (
+      <TaskRow
+        key={rowKey}
+        task={parent}
+        rowKey={rowKey}
+        isSubtask={isSubtask}
+        isDuplicate
+        hours={hours[rowKey] ?? ''}
+        comment={comments[rowKey] ?? ''}
+        existingHours={0}
+        onHoursChange={onHoursChange}
+        onCommentChange={onCommentChange}
+        onRemoveDuplicate={onRemoveDuplicate}
+      />
+    ))
 
   return (
     <>
       <TaskRow
         task={task}
+        rowKey={task.id}
         isExpandable={task.isExpandable}
         isExpanded={isExpanded}
         isLoadingExpand={expandingTaskId === task.id}
@@ -684,21 +751,27 @@ function TaskSection({
         onCommentChange={onCommentChange}
         onToggleExpand={onToggleExpand}
         onEdit={onEdit}
+        onDuplicate={onDuplicate}
       />
+      {renderDuplicates(task, false)}
       {task.isExpandable && isExpanded && task.subtasks?.map((sub) => (
-        <TaskRow
-          key={sub.id}
-          task={sub}
-          isSubtask
-          hours={hours[sub.id] ?? ''}
-          comment={comments[sub.id] ?? ''}
-          existingHours={existingWorklogs[sub.id] ?? 0}
-          ownLoggedHours={existingWorklogs[sub.id] ?? 0}
-          canEdit={canEdit}
-          onHoursChange={onHoursChange}
-          onCommentChange={onCommentChange}
-          onEdit={onEdit}
-        />
+        <Fragment key={sub.id}>
+          <TaskRow
+            task={sub}
+            rowKey={sub.id}
+            isSubtask
+            hours={hours[sub.id] ?? ''}
+            comment={comments[sub.id] ?? ''}
+            existingHours={existingWorklogs[sub.id] ?? 0}
+            ownLoggedHours={existingWorklogs[sub.id] ?? 0}
+            canEdit={canEdit}
+            onHoursChange={onHoursChange}
+            onCommentChange={onCommentChange}
+            onEdit={onEdit}
+            onDuplicate={onDuplicate}
+          />
+          {renderDuplicates(sub, true)}
+        </Fragment>
       ))}
     </>
   )
