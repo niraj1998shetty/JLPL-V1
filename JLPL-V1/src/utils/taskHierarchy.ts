@@ -7,6 +7,21 @@ export function taskMatchesSearch(task: JiraTask, searchQuery: string): boolean 
   return task.id.toLowerCase().includes(q) || (task.summary ?? '').toLowerCase().includes(q)
 }
 
+// DFO/DMO tasks are interleaved by the server's `ORDER BY updated DESC` JQL.
+// Group by project prefix (DFO before DMO, everything else after) while
+// keeping the relative recency order within each group intact.
+const PROJECT_ORDER = ['DFO', 'DMO']
+
+function projectRank(id: string): number {
+  const prefix = id.match(/^([A-Z]+)-/)?.[1] ?? ''
+  const idx = PROJECT_ORDER.indexOf(prefix)
+  return idx === -1 ? PROJECT_ORDER.length : idx
+}
+
+function sortByProjectGroup(tasks: JiraTask[]): JiraTask[] {
+  return [...tasks].sort((a, b) => projectRank(a.id) - projectRank(b.id))
+}
+
 export function collectKnownTaskIds(tasks: JiraTask[]): Set<string> {
   const ids = new Set<string>()
   for (const t of tasks) {
@@ -60,8 +75,8 @@ export function groupTasks({
 }: GroupTasksInput): GroupedTasks {
   const matches = (t: JiraTask) => taskMatchesSearch(t, searchQuery)
 
-  const commonTasks = tasks.filter((t) => t.isDefault && matches(t))
-  const assignedTasks = tasks.filter((t) => !t.isDefault && matches(t))
+  const commonTasks = sortByProjectGroup(tasks.filter((t) => t.isDefault && matches(t)))
+  const assignedTasks = sortByProjectGroup(tasks.filter((t) => !t.isDefault && matches(t)))
 
   const knownTaskIds = collectKnownTaskIds(tasks)
 
@@ -87,10 +102,10 @@ export function groupTasks({
 
   const manualOtherTasks = otherTasks.filter((t) => !knownTaskIds.has(t.id) && matches(t))
   const manualOtherIds = new Set(manualOtherTasks.map((t) => t.id))
-  const otherSectionTasks: JiraTask[] = [
+  const otherSectionTasks: JiraTask[] = sortByProjectGroup([
     ...manualOtherTasks,
     ...extraLoggedTasks.filter((t) => !manualOtherIds.has(t.id) && matches(t)),
-  ]
+  ])
 
   return { commonTasks, assignedTasks, otherSectionTasks, knownTaskIds }
 }
