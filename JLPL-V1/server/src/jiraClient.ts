@@ -273,8 +273,10 @@ export class JiraClient {
   async getAssignedTasks(team: string): Promise<AppTask[]> {
     const defaultIds = new Set(config.jira.defaultTasks[team] ?? [])
 
-    // Include done tasks if updated within 2 weeks (mirrors old app behaviour)
-    const jql = 'assignee = currentUser() AND (statusCategory != Done OR updated >= -2w) ORDER BY updated DESC'
+    // Include done tasks if they were completed within the last 2 weeks. Uses the
+    // status-change history (not `updated`) so unrelated activity like someone
+    // else's comment doesn't resurrect an already-finished task.
+    const jql = 'assignee = currentUser() AND (statusCategory != Done OR status changed to "Done" after -2w) ORDER BY updated DESC'
     const allIssues = await this.searchIssues(jql, 50)
     const issues = allIssues.filter((i) => !defaultIds.has(i.key))
     return this.buildTaskTree(issues, defaultIds)
