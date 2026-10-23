@@ -19,20 +19,20 @@ const DEFAULT_CLASS =
 export default function HoursInput({ value, onChange, className, placeholder, disabled, onFocus, onBlur }: HoursInputProps) {
   const inputRef = useRef<HTMLInputElement>(null)
 
+  // Browsers only step a number input on wheel while it's focused, so blurring
+  // it is enough — no preventDefault, so the page still scrolls normally.
   useEffect(() => {
     const el = inputRef.current
     if (!el) return
-    const handler = (e: WheelEvent) => e.preventDefault()
-    el.addEventListener('wheel', handler, { passive: false })
+    const handler = () => {
+      if (document.activeElement === el) el.blur()
+    }
+    el.addEventListener('wheel', handler, { passive: true })
     return () => el.removeEventListener('wheel', handler)
   }, [])
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
     if (['-', '+', 'e', 'E'].includes(e.key)) e.preventDefault()
-  }
-
-  function handleWheel(e: React.WheelEvent<HTMLInputElement>) {
-    ;(e.currentTarget as HTMLInputElement).blur()
   }
 
   return (
@@ -46,7 +46,6 @@ export default function HoursInput({ value, onChange, className, placeholder, di
       value={value}
       onChange={(e) => onChange(e.target.value)}
       onKeyDown={handleKeyDown}
-      onWheel={handleWheel}
       onFocus={onFocus}
       onBlur={onBlur}
       placeholder={placeholder}
