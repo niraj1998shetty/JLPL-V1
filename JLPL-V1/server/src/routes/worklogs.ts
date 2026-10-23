@@ -42,7 +42,7 @@ router.get('/', requireAuth, async (req, res) => {
   try {
     const [myself, issuesWithWorklogs] = await Promise.all([
       client.getMyself(),
-      client.getIssuesWithWorklogsOnDate(dateStr),
+      client.getIssuesWithWorklogsOnDate(dateStr, req.team ?? 'DMO'),
     ])
 
     const myUserId = myself.accountId ?? myself.name ?? myself.key ?? ''
@@ -114,7 +114,7 @@ router.get('/month', requireAuth, async (req, res) => {
   try {
     const myself = await client.getMyself()
     const myUserId = myself.accountId ?? myself.name ?? myself.key ?? ''
-    const totals = await client.getDailyTotalsInRange(startDate, endDate, myUserId)
+    const totals = await client.getDailyTotalsInRange(startDate, endDate, myUserId, req.team ?? 'DMO')
     res.json(totals)
   } catch (err: unknown) {
     handleJiraError(err, res, 'worklogs GET month')
@@ -136,7 +136,7 @@ router.get('/range', requireAuth, async (req, res) => {
   try {
     const myself = await client.getMyself()
     const myUserId = myself.accountId ?? myself.name ?? myself.key ?? ''
-    const entries = await client.getWorklogBreakdownInRange(startDate, endDate, myUserId)
+    const entries = await client.getWorklogBreakdownInRange(startDate, endDate, myUserId, req.team ?? 'DMO')
     res.json(entries)
   } catch (err: unknown) {
     handleJiraError(err, res, 'worklogs GET range')

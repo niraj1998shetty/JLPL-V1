@@ -219,16 +219,50 @@ export class JiraClient {
     return res.data
   }
 
-  async getIssuesWithWorklogsOnDate(dateStr: string): Promise<Array<{ key: string; summary: string }>> {
+  async getIssuesWithWorklogsOnDate(dateStr: string, team: string): Promise<Array<{ key: string; summary: string }>> {
     try {
-      const jql = `worklogAuthor = currentUser() AND worklogDate = "${dateStr}"`
-      const res = await this.http.get<JiraSearchResponse>('/search', {
-        params: { jql, fields: 'summary', maxResults: 100 },
-      })
-      return res.data.issues.map((i) => ({ key: i.key, summary: i.fields?.summary ?? '' }))
+      return await this.findIssuesWithMyWorklogs(dateStr, dateStr, team)
     } catch {
       return []
     }
+  }
+
+  // The issues whose worklogs to fetch for a date range: whatever JQL finds, plus the
+  // team's common tasks and their subtasks, unconditionally.
+  //
+  // Jira only indexes a limited number of worklogs per issue for JQL, so on shared,
+  // heavily-logged issues (DMO-6276 "Internal tasks" has 2000+ worklogs across the
+  // team) `worklogDate`/`worklogAuthor` silently stop matching older weeks — the
+  // worklogs exist, the search just can't see them. Callers filter fetched worklogs
+  // by author and date themselves, so checking extra issues is always safe.
+  private async findIssuesWithMyWorklogs(
+    startDateStr: string,
+    endDateStr: string,
+    team: string,
+  ): Promise<Array<{ key: string; summary: string }>> {
+    const dateClause =
+      startDateStr === endDateStr
+        ? `worklogDate = "${startDateStr}"`
+        : `worklogDate >= "${startDateStr}" AND worklogDate <= "${endDateStr}"`
+    const sharedKeys = config.jira.defaultTasks[team] ?? []
+
+    const search = async (jql: string) => {
+      const res = await this.http.get<JiraSearchResponse>('/search', {
+        params: { jql, fields: 'summary', maxResults: 200 },
+      })
+      return res.data.issues.map((i) => ({ key: i.key, summary: i.fields?.summary ?? '' }))
+    }
+
+    const [found, shared] = await Promise.all([
+      search(`worklogAuthor = currentUser() AND ${dateClause}`),
+      sharedKeys.length > 0
+        ? search(`key in (${sharedKeys.join(',')}) OR parent in (${sharedKeys.join(',')})`).catch(() => [])
+        : Promise.resolve([]),
+    ])
+
+    const byKey = new Map(found.map((i) => [i.key, i]))
+    for (const i of shared) if (!byKey.has(i.key)) byKey.set(i.key, i)
+    return [...byKey.values()]
   }
 
   private async getWorklogs(issueKey: string): Promise<JiraWorklog[]> {
@@ -475,18 +509,17 @@ export class JiraClient {
   /**
    * Returns a map of { "YYYY-MM-DD": totalHours } for every day between
    * startDateStr and endDateStr on which the current user logged time.
-   * Makes 1 JQL search + N parallel worklog fetches (N = distinct issues in range).
+   * Searches for the issues to check (see findIssuesWithMyWorklogs), then makes
+   * N parallel worklog fetches.
    */
   async getDailyTotalsInRange(
     startDateStr: string,
     endDateStr: string,
     myUserId: string,
+    team: string,
   ): Promise<Record<string, number>> {
-    const jql = `worklogAuthor = currentUser() AND worklogDate >= "${startDateStr}" AND worklogDate <= "${endDateStr}"`
-    const res = await this.http.get<JiraSearchResponse>('/search', {
-      params: { jql, fields: 'summary', maxResults: 200 },
-    })
-    const issueKeys = res.data.issues.map((i) => i.key)
+    const issues = await this.findIssuesWithMyWorklogs(startDateStr, endDateStr, team)
+    const issueKeys = issues.map((i) => i.key)
     if (issueKeys.length === 0) return {}
 
     const worklogResults = await Promise.allSettled(
@@ -510,7 +543,7 @@ export class JiraClient {
   /**
    * Returns one row per task+date the current user logged time on between
    * startDateStr and endDateStr — the range equivalent of getExistingWorklogs,
-   * used to prefill the weekly grid. Same 1 JQL search + N parallel worklog
+   * used to prefill the weekly grid. Same issue search + N parallel worklog
    * fetches as getDailyTotalsInRange, but keeps the per-issue breakdown instead
    * of collapsing it into a single daily total.
    */
@@ -518,12 +551,9 @@ export class JiraClient {
     startDateStr: string,
     endDateStr: string,
     myUserId: string,
+    team: string,
   ): Promise<AppTimeEntry[]> {
-    const jql = `worklogAuthor = currentUser() AND worklogDate >= "${startDateStr}" AND worklogDate <= "${endDateStr}"`
-    const res = await this.http.get<JiraSearchResponse>('/search', {
-      params: { jql, fields: 'summary', maxResults: 200 },
-    })
-    const issues = res.data.issues
+    const issues = await this.findIssuesWithMyWorklogs(startDateStr, endDateStr, team)
     if (issues.length === 0) return []
 
     const worklogResults = await Promise.allSettled(
@@ -536,7 +566,7 @@ export class JiraClient {
     for (let i = 0; i < issues.length; i++) {
       const result = worklogResults[i]
       if (result.status !== 'fulfilled') continue
-      const { key, fields } = issues[i]
+      const { key, summary } = issues[i]
       for (const wl of result.value) {
         if (myUserId && userIdentifier(wl.author) !== myUserId) continue
         const date = wl.started.substring(0, 10)
@@ -547,7 +577,7 @@ export class JiraClient {
         if (existing) {
           existing.hours += hours
         } else {
-          byKey.set(mapKey, { taskId: key, date, hours, taskSummary: fields?.summary })
+          byKey.set(mapKey, { taskId: key, date, hours, taskSummary: summary })
         }
       }
     }

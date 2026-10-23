@@ -284,6 +284,13 @@ export default function WeekLogView({ tasks, setTasks, searchQuery, selectedDate
     onDateChange(next)
   }
 
+  // Picking the current week lands on today rather than its Monday, so switching
+  // back to the day view opens on today, same as the "This Week" header button.
+  function selectWeek(monday: Date) {
+    if (isSameWeek(monday, selectedDate)) return
+    onDateChange(isSameWeek(monday, new Date()) ? new Date() : monday)
+  }
+
   function handleEditCell(taskId: string, date: Date) {
     const task = [...tasks, ...otherTasks].flatMap((t) => [t, ...(t.subtasks ?? [])]).find((t) => t.id === taskId)
     const summary = task?.summary ?? rangeTaskSummaries[taskId]
@@ -397,7 +404,7 @@ export default function WeekLogView({ tasks, setTasks, searchQuery, selectedDate
   return (
     <>
       <div className="flex-shrink-0 bg-white dark:bg-gray-800 shadow-sm">
-        <WeekNav range={range} onNavigateWeek={navigateWeek} />
+        <WeekNav range={range} onNavigateWeek={navigateWeek} onSelectWeek={selectWeek} />
       </div>
 
       {successMsg && (
