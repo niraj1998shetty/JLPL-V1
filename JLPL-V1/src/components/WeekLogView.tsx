@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { useLeaveDays } from '../hooks/useLeaveDays'
 import { jiraService } from '../services/jiraService'
 import { JiraTask, JiraTimeEntry } from '../types/jira'
 import {
@@ -36,9 +37,13 @@ function parseCellKey(key: string): { rowKey: string; dateStr: string } {
   return { rowKey: key.slice(0, i), dateStr: key.slice(i + 2) }
 }
 
-// Today takes priority over the weekend tint when today happens to fall on a
-// Saturday/Sunday — it's the more actionable signal.
-function dayColumnBgClass(date: Date): string {
+const LEAVE_BG_CLASS = 'bg-purple-50 dark:bg-purple-900/15'
+
+// Leave takes priority over everything (nothing can be logged that day), then today
+// over the weekend tint when today happens to fall on a Saturday/Sunday — it's the
+// more actionable signal.
+function dayColumnBgClass(date: Date, isLeave = false): string {
+  if (isLeave) return LEAVE_BG_CLASS
   if (isToday(date)) return 'bg-jira-blue-light dark:bg-blue-900/25'
   if (isWeekendDay(date)) return 'bg-amber-50/60 dark:bg-amber-900/10'
   return ''
@@ -94,6 +99,21 @@ export default function WeekLogView({ tasks, setTasks, searchQuery, selectedDate
   const [showConfirm, setShowConfirm] = useState(false)
   const [successMsg, setSuccessMsg] = useState('')
   const [editingCell, setEditingCell] = useState<{ taskId: string; title: string; date: Date } | null>(null)
+  const { leaveDays, setLeave } = useLeaveDays()
+
+  // Hours typed for a day that's since been marked as leave (here or in another tab)
+  // would otherwise sit behind disabled inputs and still be submitted.
+  useEffect(() => {
+    const dropLeave = (prev: SessionMap) => {
+      const next: SessionMap = {}
+      for (const [k, v] of Object.entries(prev)) {
+        if (!leaveDays.has(parseCellKey(k).dateStr)) next[k] = v
+      }
+      return Object.keys(next).length === Object.keys(prev).length ? prev : next
+    }
+    setHours(dropLeave)
+    setComments(dropLeave)
+  }, [leaveDays])
 
   useEffect(() => {
     if (!successMsg) return
@@ -387,7 +407,14 @@ export default function WeekLogView({ tasks, setTasks, searchQuery, selectedDate
           )}
 
           <div className="min-w-[640px]">
-            <WeekHeaderRow range={range} />
+            <WeekHeaderRow
+              key={rangeStart}
+              range={range}
+              leaveDays={leaveDays}
+              dayExistingTotal={dayExistingTotal}
+              daySessionTotal={daySessionTotal}
+              onSetLeave={setLeave}
+            />
 
             {commonTasks.length > 0 && (
               <section>
@@ -401,6 +428,7 @@ export default function WeekLogView({ tasks, setTasks, searchQuery, selectedDate
                     comments={comments}
                     duplicates={duplicates}
                     existingByTaskDate={existingByTaskDate}
+                    leaveDays={leaveDays}
                     expandingTaskId={expandingTaskId}
                     isExpanded={expandedIds.has(row.task.id)}
                     showEstimate={false}
@@ -427,6 +455,7 @@ export default function WeekLogView({ tasks, setTasks, searchQuery, selectedDate
                     comments={comments}
                     duplicates={duplicates}
                     existingByTaskDate={existingByTaskDate}
+                    leaveDays={leaveDays}
                     expandingTaskId={expandingTaskId}
                     isExpanded={expandedIds.has(row.task.id)}
                     showEstimate={true}
@@ -453,6 +482,7 @@ export default function WeekLogView({ tasks, setTasks, searchQuery, selectedDate
                     comments={comments}
                     duplicates={duplicates}
                     existingByTaskDate={existingByTaskDate}
+                    leaveDays={leaveDays}
                     expandingTaskId={expandingTaskId}
                     isExpanded={expandedIds.has(row.task.id)}
                     showEstimate={true}
@@ -484,7 +514,7 @@ export default function WeekLogView({ tasks, setTasks, searchQuery, selectedDate
               </div>
             )}
 
-            <WeekTotalsRow range={range} dayExistingTotal={dayExistingTotal} daySessionTotal={daySessionTotal} />
+            <WeekTotalsRow range={range} leaveDays={leaveDays} dayExistingTotal={dayExistingTotal} daySessionTotal={daySessionTotal} />
           </div>
         </div>
       </div>
@@ -522,30 +552,132 @@ export default function WeekLogView({ tasks, setTasks, searchQuery, selectedDate
 
 // --- Sub-components ---
 
-function WeekHeaderRow({ range }: { range: WeekRange }) {
+function formatHours(h: number): string {
+  return h.toFixed(2).replace(/\.?0+$/, '')
+}
+
+interface WeekHeaderRowProps {
+  range: WeekRange
+  leaveDays: ReadonlySet<string>
+  dayExistingTotal: (dateStr: string) => number
+  daySessionTotal: (dateStr: string) => number
+  onSetLeave: (dateStr: string, onLeave: boolean) => void
+}
+
+// Each day header is a button that opens a small popover for marking the day as leave.
+function WeekHeaderRow({ range, leaveDays, dayExistingTotal, daySessionTotal, onSetLeave }: WeekHeaderRowProps) {
+  const [openDate, setOpenDate] = useState<string | null>(null)
+  const rootRef = useRef<HTMLDivElement>(null)
+
+  // Close on outside click or Escape. Clicks on another day header land inside the
+  // row, so they switch the popover to that day instead of just closing it.
+  useEffect(() => {
+    if (!openDate) return
+    function onDown(e: MouseEvent) {
+      if (!rootRef.current?.contains(e.target as Node)) setOpenDate(null)
+    }
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') setOpenDate(null)
+    }
+    document.addEventListener('mousedown', onDown)
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('mousedown', onDown)
+      document.removeEventListener('keydown', onKey)
+    }
+  }, [openDate])
+
   return (
-    <div className="flex items-stretch bg-gray-50 dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 text-[11px] font-bold text-gray-400 dark:text-gray-500 sticky top-0 z-20">
+    // z-30 (above the sticky totals row) so an open popover is never painted under it.
+    <div
+      ref={rootRef}
+      className="flex items-stretch bg-gray-50 dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 text-[11px] font-bold text-gray-400 dark:text-gray-500 sticky top-0 z-30"
+    >
       <div className={`sticky left-0 z-30 bg-gray-50 dark:bg-gray-900 ${LABEL_COL_CLASS} px-4 py-2 flex items-center uppercase tracking-wider`}>
         Task
       </div>
       {range.days.map((d) => {
+        const dateStr = formatDateForApi(d)
         const weekend = isWeekendDay(d)
         const today = isToday(d)
+        const onLeave = leaveDays.has(dateStr)
+        const isOpen = openDate === dateStr
+        const existing = dayExistingTotal(dateStr)
+        const pending = daySessionTotal(dateStr)
         return (
           <div
-            key={d.toISOString()}
-            className={`${DAY_COL_CLASS} px-1 py-2 flex flex-col items-center justify-center ${
-              today
-                ? 'bg-jira-blue-light dark:bg-blue-900/30 text-jira-blue dark:text-blue-300 border-b-2 border-b-jira-blue'
+            key={dateStr}
+            className={`${DAY_COL_CLASS} relative ${
+              onLeave
+                ? `${LEAVE_BG_CLASS} text-purple-600 dark:text-purple-300`
+                : today
+                ? 'bg-jira-blue-light dark:bg-blue-900/30 text-jira-blue dark:text-blue-300'
                 : weekend
                 ? 'bg-amber-50/60 dark:bg-amber-900/10 text-amber-600 dark:text-amber-500'
                 : ''
-            }`}
+            } ${today ? 'border-b-2 border-b-jira-blue' : ''}`}
           >
-            <span className="uppercase tracking-wider">{d.toLocaleDateString('en-US', { weekday: 'short' })}</span>
-            <span className={`font-semibold text-xs ${today ? 'text-jira-blue dark:text-blue-300' : 'text-gray-500 dark:text-gray-400'}`}>
-              {d.getDate()}
-            </span>
+            <button
+              type="button"
+              onClick={() => setOpenDate(isOpen ? null : dateStr)}
+              className="w-full h-full px-1 py-2 flex flex-col items-center justify-center hover:bg-black/5 dark:hover:bg-white/5 transition-colors"
+              aria-haspopup="dialog"
+              aria-expanded={isOpen}
+              title={onLeave ? 'On leave — click to change' : 'Click to mark as leave'}
+            >
+              <span className="uppercase tracking-wider">{d.toLocaleDateString('en-US', { weekday: 'short' })}</span>
+              <span
+                className={`font-semibold text-xs ${
+                  onLeave
+                    ? 'text-purple-600 dark:text-purple-300'
+                    : today
+                    ? 'text-jira-blue dark:text-blue-300'
+                    : 'text-gray-500 dark:text-gray-400'
+                }`}
+              >
+                {d.getDate()}
+              </span>
+              {onLeave && <span className="text-[9px] uppercase tracking-wider leading-none mt-0.5">Leave</span>}
+            </button>
+
+            {isOpen && (
+              <div
+                role="dialog"
+                aria-label={`Leave for ${d.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}`}
+                className="absolute top-full right-0 mt-1 w-56 p-3 bg-white dark:bg-gray-800 rounded-lg shadow-xl border border-gray-200 dark:border-gray-700 text-left font-normal normal-case tracking-normal z-40"
+              >
+                <p className="text-xs font-semibold text-gray-800 dark:text-gray-100">
+                  {d.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}
+                </p>
+                <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5">
+                  {onLeave ? "Marked as leave — hours can't be logged on this day." : 'Mark this day as leave to block logging hours on it.'}
+                </p>
+                {!onLeave && existing > 0 && (
+                  <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-1.5">
+                    {formatHours(existing)}h already logged in Jira will be kept.
+                  </p>
+                )}
+                {!onLeave && pending > 0 && (
+                  <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-1.5">
+                    The {formatHours(pending)}h you've entered for this day will be cleared.
+                  </p>
+                )}
+                <button
+                  type="button"
+                  onClick={() => {
+                    onSetLeave(dateStr, !onLeave)
+                    setOpenDate(null)
+                  }}
+                  className={`mt-2.5 w-full px-3 py-1.5 rounded-md text-xs font-semibold transition-colors ${
+                    onLeave
+                      ? 'border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700'
+                      : 'bg-purple-600 text-white hover:bg-purple-700'
+                  }`}
+                >
+                  {onLeave ? 'Remove leave' : 'Mark as leave'}
+                </button>
+              </div>
+            )}
           </div>
         )
       })}
@@ -560,6 +692,7 @@ interface WeekTaskRowProps {
   comments: SessionMap
   duplicates: DuplicateMap
   existingByTaskDate: Record<string, Record<string, number>>
+  leaveDays: ReadonlySet<string>
   expandingTaskId: string | null
   isExpanded: boolean
   showEstimate: boolean
@@ -578,6 +711,7 @@ function WeekTaskRow({
   comments,
   duplicates,
   existingByTaskDate,
+  leaveDays,
   expandingTaskId,
   isExpanded,
   showEstimate,
@@ -740,6 +874,7 @@ function WeekTaskRow({
           <WeekDayCell
             key={dateStr}
             date={d}
+            isLeave={leaveDays.has(dateStr)}
             // Already-logged hours and the edit pencil describe the task as a whole, so
             // they stay on the primary row rather than repeating on every extra entry.
             existingHours={isDuplicate ? 0 : existingHours}
@@ -759,6 +894,7 @@ function WeekTaskRow({
 
 interface WeekDayCellProps {
   date: Date
+  isLeave: boolean
   existingHours: number
   ownExistingHours: number
   pendingChildHours: number
@@ -771,6 +907,7 @@ interface WeekDayCellProps {
 
 function WeekDayCell({
   date,
+  isLeave,
   existingHours,
   ownExistingHours,
   pendingChildHours,
@@ -785,9 +922,9 @@ function WeekDayCell({
   const hasSession = parseFloat(sessionValue) > 0
 
   return (
-    <div className={`${DAY_COL_CLASS} px-1 py-2 flex flex-col items-center gap-0.5 ${dayColumnBgClass(date)}`}>
+    <div className={`${DAY_COL_CLASS} px-1 py-2 flex flex-col items-center gap-0.5 ${dayColumnBgClass(date, isLeave)}`}>
       <div className="flex items-center gap-0.5">
-        {editable && ownExistingHours > 0 && (
+        {editable && !isLeave && ownExistingHours > 0 && (
           <button
             type="button"
             onClick={onEditClick}
@@ -803,7 +940,7 @@ function WeekDayCell({
         <HoursInput
           value={sessionValue}
           onChange={onSessionChange}
-          disabled={future}
+          disabled={future || isLeave}
           className="w-11 sm:w-12 px-1 py-1 text-xs text-center border border-gray-300 dark:border-gray-600 rounded focus:outline-none focus:ring-1 focus:ring-jira-blue focus:border-transparent bg-white dark:bg-gray-700 dark:text-gray-100"
         />
       </div>
@@ -830,10 +967,12 @@ function WeekDayCell({
 
 function WeekTotalsRow({
   range,
+  leaveDays,
   dayExistingTotal,
   daySessionTotal,
 }: {
   range: WeekRange
+  leaveDays: ReadonlySet<string>
   dayExistingTotal: (dateStr: string) => number
   daySessionTotal: (dateStr: string) => number
 }) {
@@ -846,14 +985,21 @@ function WeekTotalsRow({
         const dateStr = formatDateForApi(d)
         const total = dayExistingTotal(dateStr) + daySessionTotal(dateStr)
         const over = total > 8.001
+        const isLeave = leaveDays.has(dateStr)
         return (
           <div
             key={dateStr}
-            className={`${DAY_COL_CLASS} ${dayColumnBgClass(d)} px-1 py-2 flex items-center justify-center text-xs font-semibold ${
-              over ? 'text-red-600 dark:text-red-400' : total >= 8 ? 'text-green-600 dark:text-green-400' : 'text-gray-700 dark:text-gray-300'
+            className={`${DAY_COL_CLASS} ${dayColumnBgClass(d, isLeave)} px-1 py-2 flex items-center justify-center text-xs font-semibold ${
+              over
+                ? 'text-red-600 dark:text-red-400'
+                : total >= 8
+                ? 'text-green-600 dark:text-green-400'
+                : isLeave
+                ? 'text-purple-600 dark:text-purple-300'
+                : 'text-gray-700 dark:text-gray-300'
             }`}
           >
-            {total > 0 ? `${total.toFixed(2).replace(/\.?0+$/, '')}h` : '—'}
+            {total > 0 ? `${total.toFixed(2).replace(/\.?0+$/, '')}h` : isLeave ? 'Leave' : '—'}
           </div>
         )
       })}

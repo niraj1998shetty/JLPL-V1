@@ -1,4 +1,5 @@
 import { Fragment, useCallback, useEffect, useRef, useState } from 'react'
+import { useLeaveDays } from '../hooks/useLeaveDays'
 import { jiraService } from '../services/jiraService'
 import { JiraTask, JiraTimeEntry } from '../types/jira'
 import {
@@ -112,7 +113,20 @@ export default function DayLogView({ tasks, setTasks, searchQuery, selectedDate,
   const totalLogged = existingTotal + sessionHours
   const isOverLimit = totalLogged > 8.001
 
-  const canSubmit = !isOverLimit && !isSubmitting && sessionHours > 0
+  const { leaveDays, setLeave } = useLeaveDays()
+  const selectedDateStr = formatDateForApi(selectedDate)
+  const isLeave = leaveDays.has(selectedDateStr)
+
+  const canSubmit = !isOverLimit && !isSubmitting && sessionHours > 0 && !isLeave
+
+  // A day marked as leave (e.g. from the week view in another tab) can't keep
+  // unsubmitted hours behind its disabled inputs.
+  useEffect(() => {
+    if (!isLeave) return
+    setHours(clearSessionMap)
+    setComments(clearSessionMap)
+    setDuplicates({})
+  }, [isLeave])
 
   // Reset session state and reload worklogs whenever the viewed date changes,
   // regardless of whether that came from the prev/next arrows, the calendar
@@ -301,7 +315,8 @@ export default function DayLogView({ tasks, setTasks, searchQuery, selectedDate,
     cutoff.setHours(0, 0, 0, 0)
     return date <= today && date >= cutoff
   }
-  const canEditSelectedDate = isEditableDate(selectedDate)
+  // Leave days are read-only: existing worklogs stay visible but can't be added to or edited.
+  const canEditSelectedDate = isEditableDate(selectedDate) && !isLeave
 
   function findTaskById(id: string): JiraTask | null {
     for (const t of [...tasks, ...loggedTasks, ...otherTasks]) {
@@ -513,6 +528,22 @@ export default function DayLogView({ tasks, setTasks, searchQuery, selectedDate,
             </div>
           )}
 
+          {isLeave && (
+            <div className="px-4 py-2.5 flex items-center gap-2 text-sm text-purple-700 dark:text-purple-300 bg-purple-50 dark:bg-purple-900/20 border-b border-purple-100 dark:border-purple-800">
+              <span className="font-medium">This day is marked as leave</span>
+              <span className="text-xs text-purple-500 dark:text-purple-400">— hours can't be logged.</span>
+              <button
+                type="button"
+                onClick={() => setLeave(selectedDateStr, false)}
+                className="ml-auto text-xs font-semibold px-2.5 py-1 rounded-md border border-purple-300 dark:border-purple-700 hover:bg-purple-100 dark:hover:bg-purple-900/40 transition-colors"
+              >
+                Remove leave
+              </button>
+            </div>
+          )}
+
+          {/* Disabling the fieldset disables every hours input and row button inside it. */}
+          <fieldset disabled={isLeave} className="min-w-0">
           {commonTasks.length > 0 && (
             <section>
               <GroupHeader label="Common Tasks" />
@@ -614,6 +645,7 @@ export default function DayLogView({ tasks, setTasks, searchQuery, selectedDate,
               <p className="text-sm">No tasks found</p>
             </div>
           )}
+          </fieldset>
 
           <div className="h-2" />
         </div>
