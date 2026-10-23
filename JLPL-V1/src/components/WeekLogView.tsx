@@ -9,6 +9,7 @@ import {
   rowKeysForTask,
   taskIdFromRowKey,
 } from '../utils/duplicateRows'
+import { applyLoggedHours } from '../utils/optimisticLogs'
 import { FlatTaskRow, flattenVisibleRows, groupTasks } from '../utils/taskHierarchy'
 import { WeekRange, formatDateForApi, formatWeekRangeLabel, getWeekRange, isSameWeek, isToday, isWeekendDay } from '../utils/week'
 import ConfirmDialog from './ConfirmDialog'
@@ -385,6 +386,12 @@ export default function WeekLogView({ tasks, setTasks, searchQuery, selectedDate
       const days = [...byDate.entries()].map(([date, entries]) => ({ date, entries }))
 
       await jiraService.submitWeek({ days })
+
+      // Update the info popup's numbers locally so they reflect the new worklogs
+      // without a page reload — loadRange below only refreshes the grid's hours.
+      const submitted = days.flatMap((d) => d.entries)
+      setTasks((prev) => applyLoggedHours(prev, submitted))
+      setOtherTasks((prev) => applyLoggedHours(prev, submitted))
 
       setHours({})
       setComments({})

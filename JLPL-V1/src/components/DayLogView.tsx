@@ -10,6 +10,7 @@ import {
   rowKeysForTask,
   taskIdFromRowKey,
 } from '../utils/duplicateRows'
+import { applyLoggedHours } from '../utils/optimisticLogs'
 import { groupTasks } from '../utils/taskHierarchy'
 import { formatDateForApi } from '../utils/week'
 import ConfirmDialog from './ConfirmDialog'
@@ -428,37 +429,13 @@ export default function DayLogView({ tasks, setTasks, searchQuery, selectedDate,
     setOtherTaskError('')
   }
 
-  // After a successful submit, bump totalLoggedHours and updatedAt locally so
-  // the info popup reflects the new state without a page reload. Jira's
-  // aggregatetimespent rolls subtask logs up into the parent, so we mirror that.
+  // After a successful submit, update the info popup's numbers locally so they
+  // reflect the new worklogs without a page reload. Logged tasks are refetched by
+  // loadWorklogs right after, so only the common/assigned and manually added lists
+  // need it.
   function applyOptimisticLogs(entries: JiraTimeEntry[]) {
-    const now = new Date().toISOString()
-    const hoursById: Record<string, number> = {}
-    for (const e of entries) hoursById[e.taskId] = (hoursById[e.taskId] ?? 0) + e.hours
-
-    function bump(t: JiraTask): JiraTask {
-      const bumpedSubs = t.subtasks?.map(bump)
-      const ownAdd = hoursById[t.id] ?? 0
-
-      // Aggregate hours that belong under this task: own + every descendant we know about,
-      // de-duped across subtasks[] and subtaskKeys[].
-      const descendantIds = new Set<string>([
-        ...(t.subtasks ?? []).map((s) => s.id),
-        ...(t.subtaskKeys ?? []),
-      ])
-      let aggregateAdd = ownAdd
-      for (const id of descendantIds) aggregateAdd += hoursById[id] ?? 0
-
-      if (aggregateAdd === 0 && bumpedSubs === t.subtasks) return t
-      return {
-        ...t,
-        totalLoggedHours: (t.totalLoggedHours ?? 0) + aggregateAdd,
-        updatedAt: aggregateAdd > 0 ? now : t.updatedAt,
-        subtasks: bumpedSubs,
-      }
-    }
-
-    setTasks((prev) => prev.map(bump))
+    setTasks((prev) => applyLoggedHours(prev, entries))
+    setOtherTasks((prev) => applyLoggedHours(prev, entries))
   }
 
   async function handleSubmit() {
