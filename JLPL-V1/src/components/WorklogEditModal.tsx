@@ -9,6 +9,8 @@ interface WorklogEditModalProps {
   date: Date
   /** Total hours already logged for the day across all tasks */
   dayTotalHours: number
+  /** Max hours loggable on the day — lower on a half-day leave */
+  dailyLimit?: number
   onClose: () => void
   // Called after a successful save or delete. `deltaHours` may be negative.
   onChanged: (deltaHours: number) => void
@@ -34,6 +36,7 @@ export default function WorklogEditModal({
   taskTitle,
   date,
   dayTotalHours,
+  dailyLimit = 8,
   onClose,
   onChanged,
 }: WorklogEditModalProps) {
@@ -180,6 +183,7 @@ export default function WorklogEditModal({
                 key={entry.id}
                 entry={entry}
                 dayTotalHours={dayTotalHours}
+                dailyLimit={dailyLimit}
                 isSaving={savingId === entry.id}
                 isBusy={deletingId === entry.id || confirmDeleteId === entry.id}
                 onSave={(h, c) => handleSave(entry.id!, h, c)}
@@ -237,13 +241,14 @@ export default function WorklogEditModal({
 interface EntryRowProps {
   entry: JiraTimeEntry
   dayTotalHours: number
+  dailyLimit: number
   isSaving: boolean
   isBusy: boolean
   onSave: (hours: number, comment: string) => void
   onDeleteRequest: () => void
 }
 
-function EntryRow({ entry, dayTotalHours, isSaving, isBusy, onSave, onDeleteRequest }: EntryRowProps) {
+function EntryRow({ entry, dayTotalHours, dailyLimit, isSaving, isBusy, onSave, onDeleteRequest }: EntryRowProps) {
   const [hoursStr, setHoursStr] = useState<string>(String(entry.hours))
   const [comment, setComment] = useState<string>(entry.comment ?? '')
 
@@ -263,7 +268,7 @@ function EntryRow({ entry, dayTotalHours, isSaving, isBusy, onSave, onDeleteRequ
   const projectedTotal = Number.isFinite(hoursNum)
     ? dayTotalHours - entry.hours + hoursNum
     : dayTotalHours
-  const wouldExceed = dirty && valid && projectedTotal > 8.001
+  const wouldExceed = dirty && valid && projectedTotal > dailyLimit + 0.001
 
   return (
     <div className="border border-gray-200 dark:border-gray-600 rounded-lg p-3 bg-white dark:bg-gray-700 space-y-2">
@@ -315,7 +320,7 @@ function EntryRow({ entry, dayTotalHours, isSaving, isBusy, onSave, onDeleteRequ
             <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
           </svg>
           <span>
-            This would bring the day total to <strong>{projectedTotal.toFixed(2).replace(/\.?0+$/, '')}h</strong>, exceeding the 8h daily limit.
+            This would bring the day total to <strong>{projectedTotal.toFixed(2).replace(/\.?0+$/, '')}h</strong>, exceeding the {dailyLimit}h daily limit.
           </span>
         </div>
       )}

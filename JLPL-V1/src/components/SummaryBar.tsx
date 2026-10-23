@@ -3,6 +3,8 @@ interface SummaryBarProps {
   existingTotal: number
   isOverLimit: boolean
   actualTotal: number
+  /** Max hours loggable on the day — 4h on a half-day leave, otherwise 8h */
+  dailyLimit?: number
   canSubmit: boolean
   isSubmitting: boolean
   onSubmit: () => void
@@ -13,12 +15,13 @@ export default function SummaryBar({
   existingTotal,
   isOverLimit,
   actualTotal,
+  dailyLimit = 8,
   canSubmit,
   isSubmitting,
   onSubmit,
 }: SummaryBarProps) {
   const totalLogged = existingTotal + sessionHours
-  const progressPct = Math.min(100, (totalLogged / 8) * 100)
+  const progressPct = Math.min(100, (totalLogged / dailyLimit) * 100)
 
   return (
     <div className="border-t border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
@@ -26,7 +29,7 @@ export default function SummaryBar({
       <div className="h-1 bg-gray-100 dark:bg-gray-700">
         <div
           className={`h-full rounded-full transition-all duration-300 ${
-            isOverLimit ? 'bg-red-500' : totalLogged >= 8 ? 'bg-green-500' : 'bg-jira-blue'
+            isOverLimit ? 'bg-red-500' : totalLogged >= dailyLimit ? 'bg-green-500' : 'bg-jira-blue'
           }`}
           style={{ width: `${progressPct}%` }}
         />
@@ -43,15 +46,15 @@ export default function SummaryBar({
             <div className="w-px h-8 bg-gray-200 dark:bg-gray-600" />
             <div>
               <span className="text-gray-500 dark:text-gray-400 text-xs">Total logged</span>
-              <div className={`font-semibold ${isOverLimit ? 'text-red-600 dark:text-red-400' : totalLogged >= 8 ? 'text-green-600 dark:text-green-400' : 'text-gray-800 dark:text-gray-100'}`}>
-                {totalLogged.toFixed(2).replace(/\.?0+$/, '')}h / 8h
+              <div className={`font-semibold ${isOverLimit ? 'text-red-600 dark:text-red-400' : totalLogged >= dailyLimit ? 'text-green-600 dark:text-green-400' : 'text-gray-800 dark:text-gray-100'}`}>
+                {totalLogged.toFixed(2).replace(/\.?0+$/, '')}h / {dailyLimit}h
               </div>
             </div>
           </div>
 
           {isOverLimit && (
             <div className="text-xs text-red-600 dark:text-red-400 font-medium bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-700 px-2 py-1 rounded-lg">
-              Exceeds 8h ({actualTotal.toFixed(2)}h)
+              Exceeds {dailyLimit}h ({actualTotal.toFixed(2)}h)
             </div>
           )}
         </div>

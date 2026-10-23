@@ -1,5 +1,5 @@
 import { Fragment, useCallback, useEffect, useRef, useState } from 'react'
-import { useLeaveDays } from '../hooks/useLeaveDays'
+import { LEAVE_LABELS, blocksLogging, dailyLimitFor, useLeaveDays } from '../hooks/useLeaveDays'
 import { jiraService } from '../services/jiraService'
 import { JiraTask, JiraTimeEntry } from '../types/jira'
 import {
@@ -111,11 +111,14 @@ export default function DayLogView({ tasks, setTasks, searchQuery, selectedDate,
 
   const existingTotal = Object.values(existingWorklogs).reduce((s, v) => s + v, 0)
   const totalLogged = existingTotal + sessionHours
-  const isOverLimit = totalLogged > 8.001
 
   const { leaveDays, setLeave } = useLeaveDays()
   const selectedDateStr = formatDateForApi(selectedDate)
-  const isLeave = leaveDays.has(selectedDateStr)
+  const leaveType = leaveDays.get(selectedDateStr)
+  // Full-day leave and holidays block logging; half-day leave only lowers the day's cap.
+  const isLeave = blocksLogging(leaveType)
+  const dailyLimit = dailyLimitFor(leaveType)
+  const isOverLimit = totalLogged > dailyLimit + 0.001
 
   const canSubmit = !isOverLimit && !isSubmitting && sessionHours > 0 && !isLeave
 
@@ -528,16 +531,29 @@ export default function DayLogView({ tasks, setTasks, searchQuery, selectedDate,
             </div>
           )}
 
-          {isLeave && (
-            <div className="px-4 py-2.5 flex items-center gap-2 text-sm text-purple-700 dark:text-purple-300 bg-purple-50 dark:bg-purple-900/20 border-b border-purple-100 dark:border-purple-800">
-              <span className="font-medium">This day is marked as leave</span>
-              <span className="text-xs text-purple-500 dark:text-purple-400">— hours can't be logged.</span>
+          {leaveType && (
+            <div
+              className={`px-4 py-2.5 flex items-center gap-2 text-sm border-b ${
+                leaveType === 'holiday'
+                  ? 'text-orange-800 dark:text-orange-300 bg-orange-100 dark:bg-orange-500/15 border-orange-200 dark:border-orange-800'
+                  : leaveType === 'full'
+                  ? 'text-orange-700 dark:text-orange-300 bg-orange-50 dark:bg-orange-400/[0.08] border-orange-100 dark:border-orange-900'
+                  : // Half day leave can still be logged on, so it gets a neutral note, not the saffron "blocked" tint.
+                    'text-gray-700 dark:text-gray-300 bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700'
+              }`}
+            >
+              <span className={`font-medium ${leaveType === 'half' ? 'text-orange-600 dark:text-orange-400' : ''}`}>
+                {LEAVE_LABELS[leaveType]}
+              </span>
+              <span className="text-xs text-gray-500 dark:text-gray-400">
+                {leaveType === 'half' ? `— up to ${dailyLimit}h can be logged.` : "— hours can't be logged."}
+              </span>
               <button
                 type="button"
-                onClick={() => setLeave(selectedDateStr, false)}
-                className="ml-auto text-xs font-semibold px-2.5 py-1 rounded-md border border-purple-300 dark:border-purple-700 hover:bg-purple-100 dark:hover:bg-purple-900/40 transition-colors"
+                onClick={() => setLeave(selectedDateStr, null)}
+                className="ml-auto text-xs font-semibold px-2.5 py-1 rounded-md border border-orange-300 dark:border-orange-700 hover:bg-orange-100 dark:hover:bg-orange-900/40 transition-colors"
               >
-                Remove leave
+                {leaveType === 'holiday' ? 'Remove holiday' : 'Remove leave'}
               </button>
             </div>
           )}
@@ -656,6 +672,7 @@ export default function DayLogView({ tasks, setTasks, searchQuery, selectedDate,
         existingTotal={existingTotal}
         isOverLimit={isOverLimit}
         actualTotal={totalLogged}
+        dailyLimit={dailyLimit}
         canSubmit={canSubmit}
         isSubmitting={isSubmitting}
         onSubmit={() => setShowConfirm(true)}
@@ -676,6 +693,7 @@ export default function DayLogView({ tasks, setTasks, searchQuery, selectedDate,
           taskTitle={editingTask.title}
           date={selectedDate}
           dayTotalHours={existingTotal}
+          dailyLimit={dailyLimit}
           onClose={() => setEditingTask(null)}
           onChanged={(delta) => handleWorklogChanged(editingTask.id, delta)}
         />

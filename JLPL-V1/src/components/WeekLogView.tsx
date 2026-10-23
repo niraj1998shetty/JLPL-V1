@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { useLeaveDays } from '../hooks/useLeaveDays'
+import { HALF_DAY_HOURS, LEAVE_LABELS, LeaveType, blocksLogging, dailyLimitFor, useLeaveDays } from '../hooks/useLeaveDays'
 import { jiraService } from '../services/jiraService'
 import { JiraTask, JiraTimeEntry } from '../types/jira'
 import {
@@ -37,17 +37,39 @@ function parseCellKey(key: string): { rowKey: string; dateStr: string } {
   return { rowKey: key.slice(0, i), dateStr: key.slice(i + 2) }
 }
 
-const LEAVE_BG_CLASS = 'bg-purple-50 dark:bg-purple-900/15'
+type LeaveMap = ReadonlyMap<string, LeaveType>
 
-// Leave takes priority over everything (nothing can be logged that day), then today
-// over the weekend tint when today happens to fall on a Saturday/Sunday — it's the
-// more actionable signal.
-function dayColumnBgClass(date: Date, isLeave = false): string {
-  if (isLeave) return LEAVE_BG_CLASS
+// Non-working days (weekends, public holidays) are dark saffron; a full day leave is
+// light saffron. Half day leave is deliberately untinted — hours can still be logged
+// on it, so it only gets a saffron tag in the header.
+// In dark mode, low-alpha *dark* oranges wash out to grey/brown on the gray-800
+// rows, so both tints use brighter oranges at low alpha instead.
+const DARK_SAFFRON_BG = 'bg-orange-100 dark:bg-orange-500/15'
+const DARK_SAFFRON_TEXT = 'text-orange-700 dark:text-orange-400'
+const LIGHT_SAFFRON_BG = 'bg-orange-50 dark:bg-orange-400/[0.08]'
+const LIGHT_SAFFRON_TEXT = 'text-orange-500 dark:text-orange-300'
+
+// Leave/holiday takes priority over everything (it changes what can be logged that
+// day), then today over the weekend tint when today happens to fall on a
+// Saturday/Sunday — it's the more actionable signal.
+function dayColumnBgClass(date: Date, leave?: LeaveType): string {
+  if (leave === 'holiday') return DARK_SAFFRON_BG
+  if (leave === 'full') return LIGHT_SAFFRON_BG
   if (isToday(date)) return 'bg-jira-blue-light dark:bg-blue-900/25'
-  if (isWeekendDay(date)) return 'bg-amber-50/60 dark:bg-amber-900/10'
+  if (isWeekendDay(date)) return DARK_SAFFRON_BG
   return ''
 }
+
+// Header text colour, following the same priority as dayColumnBgClass.
+function dayHeaderTextClass(date: Date, leave?: LeaveType): string {
+  if (leave === 'holiday') return DARK_SAFFRON_TEXT
+  if (leave === 'full') return LIGHT_SAFFRON_TEXT
+  if (isToday(date)) return 'text-jira-blue dark:text-blue-300'
+  if (isWeekendDay(date)) return DARK_SAFFRON_TEXT
+  return ''
+}
+
+const HEADER_LEAVE_TAGS: Record<LeaveType, string> = { full: 'Leave', half: 'Half leave', holiday: 'Holiday' }
 
 function isFutureDate(date: Date): boolean {
   const endOfToday = new Date()
@@ -101,13 +123,14 @@ export default function WeekLogView({ tasks, setTasks, searchQuery, selectedDate
   const [editingCell, setEditingCell] = useState<{ taskId: string; title: string; date: Date } | null>(null)
   const { leaveDays, setLeave } = useLeaveDays()
 
-  // Hours typed for a day that's since been marked as leave (here or in another tab)
-  // would otherwise sit behind disabled inputs and still be submitted.
+  // Hours typed for a day that's since been marked as full-day leave or a holiday
+  // (here or in another tab) would otherwise sit behind disabled inputs and still be
+  // submitted. Half-day leave keeps them — the lower cap is enforced by the over-limit check.
   useEffect(() => {
     const dropLeave = (prev: SessionMap) => {
       const next: SessionMap = {}
       for (const [k, v] of Object.entries(prev)) {
-        if (!leaveDays.has(parseCellKey(k).dateStr)) next[k] = v
+        if (!blocksLogging(leaveDays.get(parseCellKey(k).dateStr))) next[k] = v
       }
       return Object.keys(next).length === Object.keys(prev).length ? prev : next
     }
@@ -196,7 +219,7 @@ export default function WeekLogView({ tasks, setTasks, searchQuery, selectedDate
   const sessionHours = Object.values(hours).reduce<number>((s, v) => s + (parseFloat(v) || 0), 0)
   const overLimitDates = range.days.filter((d) => {
     const dateStr = formatDateForApi(d)
-    return dayExistingTotal(dateStr) + daySessionTotal(dateStr) > 8.001
+    return dayExistingTotal(dateStr) + daySessionTotal(dateStr) > dailyLimitFor(leaveDays.get(dateStr)) + 0.001
   })
   const canSubmit = sessionHours > 0 && !isSubmitting && overLimitDates.length === 0
   const canAddOtherTask = range.days.some(isEditableDate)
@@ -542,6 +565,7 @@ export default function WeekLogView({ tasks, setTasks, searchQuery, selectedDate
           taskTitle={editingCell.title}
           date={editingCell.date}
           dayTotalHours={dayExistingTotal(formatDateForApi(editingCell.date))}
+          dailyLimit={dailyLimitFor(leaveDays.get(formatDateForApi(editingCell.date)))}
           onClose={() => setEditingCell(null)}
           onChanged={(delta) => handleWorklogChanged(editingCell.taskId, formatDateForApi(editingCell.date), delta)}
         />
@@ -558,10 +582,10 @@ function formatHours(h: number): string {
 
 interface WeekHeaderRowProps {
   range: WeekRange
-  leaveDays: ReadonlySet<string>
+  leaveDays: LeaveMap
   dayExistingTotal: (dateStr: string) => number
   daySessionTotal: (dateStr: string) => number
-  onSetLeave: (dateStr: string, onLeave: boolean) => void
+  onSetLeave: (dateStr: string, type: LeaveType | null) => void
 }
 
 // Each day header is a button that opens a small popover for marking the day as leave.
@@ -598,24 +622,23 @@ function WeekHeaderRow({ range, leaveDays, dayExistingTotal, daySessionTotal, on
       </div>
       {range.days.map((d) => {
         const dateStr = formatDateForApi(d)
-        const weekend = isWeekendDay(d)
         const today = isToday(d)
-        const onLeave = leaveDays.has(dateStr)
+        const leave = leaveDays.get(dateStr)
+        const tone = dayHeaderTextClass(d, leave)
         const isOpen = openDate === dateStr
         const existing = dayExistingTotal(dateStr)
         const pending = daySessionTotal(dateStr)
+        const label = d.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })
+        const choose = (type: LeaveType | null) => {
+          if (type !== (leave ?? null)) onSetLeave(dateStr, type)
+          setOpenDate(null)
+        }
         return (
           <div
             key={dateStr}
             className={`${DAY_COL_CLASS} relative ${
-              onLeave
-                ? `${LEAVE_BG_CLASS} text-purple-600 dark:text-purple-300`
-                : today
-                ? 'bg-jira-blue-light dark:bg-blue-900/30 text-jira-blue dark:text-blue-300'
-                : weekend
-                ? 'bg-amber-50/60 dark:bg-amber-900/10 text-amber-600 dark:text-amber-500'
-                : ''
-            } ${today ? 'border-b-2 border-b-jira-blue' : ''}`}
+              today && !blocksLogging(leave) ? 'bg-jira-blue-light dark:bg-blue-900/30' : dayColumnBgClass(d, leave)
+            } ${tone} ${today ? 'border-b-2 border-b-jira-blue' : ''}`}
           >
             <button
               type="button"
@@ -623,59 +646,76 @@ function WeekHeaderRow({ range, leaveDays, dayExistingTotal, daySessionTotal, on
               className="w-full h-full px-1 py-2 flex flex-col items-center justify-center hover:bg-black/5 dark:hover:bg-white/5 transition-colors"
               aria-haspopup="dialog"
               aria-expanded={isOpen}
-              title={onLeave ? 'On leave — click to change' : 'Click to mark as leave'}
+              title={leave ? `${LEAVE_LABELS[leave]} — click to change` : 'Click to mark leave or a public holiday'}
             >
               <span className="uppercase tracking-wider">{d.toLocaleDateString('en-US', { weekday: 'short' })}</span>
-              <span
-                className={`font-semibold text-xs ${
-                  onLeave
-                    ? 'text-purple-600 dark:text-purple-300'
-                    : today
-                    ? 'text-jira-blue dark:text-blue-300'
-                    : 'text-gray-500 dark:text-gray-400'
-                }`}
-              >
-                {d.getDate()}
-              </span>
-              {onLeave && <span className="text-[9px] uppercase tracking-wider leading-none mt-0.5">Leave</span>}
+              <span className={`font-semibold text-xs ${tone || 'text-gray-500 dark:text-gray-400'}`}>{d.getDate()}</span>
+              {leave && (
+                <span
+                  className={`text-[9px] uppercase tracking-wider leading-none mt-0.5 whitespace-nowrap ${
+                    leave === 'half' ? LIGHT_SAFFRON_TEXT : ''
+                  }`}
+                >
+                  {HEADER_LEAVE_TAGS[leave]}
+                </span>
+              )}
             </button>
 
             {isOpen && (
               <div
                 role="dialog"
-                aria-label={`Leave for ${d.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}`}
-                className="absolute top-full right-0 mt-1 w-56 p-3 bg-white dark:bg-gray-800 rounded-lg shadow-xl border border-gray-200 dark:border-gray-700 text-left font-normal normal-case tracking-normal z-40"
+                aria-label={`Leave or holiday for ${label}`}
+                className="absolute top-full right-0 mt-1 w-60 p-3 bg-white dark:bg-gray-800 rounded-lg shadow-xl border border-gray-200 dark:border-gray-700 text-left font-normal normal-case tracking-normal z-40"
               >
-                <p className="text-xs font-semibold text-gray-800 dark:text-gray-100">
-                  {d.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}
-                </p>
+                <p className="text-xs font-semibold text-gray-800 dark:text-gray-100">{label}</p>
                 <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5">
-                  {onLeave ? "Marked as leave — hours can't be logged on this day." : 'Mark this day as leave to block logging hours on it.'}
+                  {leave === 'half'
+                    ? `Half day leave — up to ${HALF_DAY_HOURS}h can be logged.`
+                    : leave
+                    ? `${LEAVE_LABELS[leave]} — hours can't be logged.`
+                    : 'Mark this day as leave or a public holiday.'}
                 </p>
-                {!onLeave && existing > 0 && (
+                {!blocksLogging(leave) && pending > 0 && (
                   <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-1.5">
-                    {formatHours(existing)}h already logged in Jira will be kept.
+                    Full day leave or a holiday clears the {formatHours(pending)}h you've entered.
                   </p>
                 )}
-                {!onLeave && pending > 0 && (
+                {leave !== 'half' && existing + pending > HALF_DAY_HOURS && (
                   <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-1.5">
-                    The {formatHours(pending)}h you've entered for this day will be cleared.
+                    Half day caps the day at {HALF_DAY_HOURS}h — it already has {formatHours(existing + pending)}h.
                   </p>
                 )}
-                <button
-                  type="button"
-                  onClick={() => {
-                    onSetLeave(dateStr, !onLeave)
-                    setOpenDate(null)
-                  }}
-                  className={`mt-2.5 w-full px-3 py-1.5 rounded-md text-xs font-semibold transition-colors ${
-                    onLeave
-                      ? 'border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700'
-                      : 'bg-purple-600 text-white hover:bg-purple-700'
-                  }`}
-                >
-                  {onLeave ? 'Remove leave' : 'Mark as leave'}
-                </button>
+                {!leave && existing > 0 && (
+                  <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-1.5">
+                    The {formatHours(existing)}h already logged in Jira is kept either way.
+                  </p>
+                )}
+                <div className="mt-2.5 flex flex-col gap-1.5">
+                  {(['holiday', 'full', 'half'] as const).map((type) => (
+                    <button
+                      key={type}
+                      type="button"
+                      onClick={() => choose(type)}
+                      aria-pressed={leave === type}
+                      className={`px-2 py-1.5 rounded-md text-xs font-semibold transition-colors ${
+                        leave === type
+                          ? 'bg-orange-500 text-white'
+                          : 'border border-orange-300 dark:border-orange-700 text-orange-700 dark:text-orange-300 hover:bg-orange-50 dark:hover:bg-orange-900/30'
+                      }`}
+                    >
+                      {LEAVE_LABELS[type]}
+                    </button>
+                  ))}
+                </div>
+                {leave && (
+                  <button
+                    type="button"
+                    onClick={() => choose(null)}
+                    className="mt-1.5 w-full px-2 py-1.5 rounded-md text-xs font-semibold border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                  >
+                    {leave === 'holiday' ? 'Remove holiday' : 'Remove leave'}
+                  </button>
+                )}
               </div>
             )}
           </div>
@@ -692,7 +732,7 @@ interface WeekTaskRowProps {
   comments: SessionMap
   duplicates: DuplicateMap
   existingByTaskDate: Record<string, Record<string, number>>
-  leaveDays: ReadonlySet<string>
+  leaveDays: LeaveMap
   expandingTaskId: string | null
   isExpanded: boolean
   showEstimate: boolean
@@ -874,7 +914,7 @@ function WeekTaskRow({
           <WeekDayCell
             key={dateStr}
             date={d}
-            isLeave={leaveDays.has(dateStr)}
+            leave={leaveDays.get(dateStr)}
             // Already-logged hours and the edit pencil describe the task as a whole, so
             // they stay on the primary row rather than repeating on every extra entry.
             existingHours={isDuplicate ? 0 : existingHours}
@@ -894,7 +934,7 @@ function WeekTaskRow({
 
 interface WeekDayCellProps {
   date: Date
-  isLeave: boolean
+  leave?: LeaveType
   existingHours: number
   ownExistingHours: number
   pendingChildHours: number
@@ -907,7 +947,7 @@ interface WeekDayCellProps {
 
 function WeekDayCell({
   date,
-  isLeave,
+  leave,
   existingHours,
   ownExistingHours,
   pendingChildHours,
@@ -920,9 +960,11 @@ function WeekDayCell({
   const future = isFutureDate(date)
   const editable = isEditableDate(date)
   const hasSession = parseFloat(sessionValue) > 0
+  // Full-day leave and holidays lock the cell; a half-day leave just lowers the day's cap.
+  const isLeave = blocksLogging(leave)
 
   return (
-    <div className={`${DAY_COL_CLASS} px-1 py-2 flex flex-col items-center gap-0.5 ${dayColumnBgClass(date, isLeave)}`}>
+    <div className={`${DAY_COL_CLASS} px-1 py-2 flex flex-col items-center gap-0.5 ${dayColumnBgClass(date, leave)}`}>
       <div className="flex items-center gap-0.5">
         {editable && !isLeave && ownExistingHours > 0 && (
           <button
@@ -972,7 +1014,7 @@ function WeekTotalsRow({
   daySessionTotal,
 }: {
   range: WeekRange
-  leaveDays: ReadonlySet<string>
+  leaveDays: LeaveMap
   dayExistingTotal: (dateStr: string) => number
   daySessionTotal: (dateStr: string) => number
 }) {
@@ -984,22 +1026,22 @@ function WeekTotalsRow({
       {range.days.map((d) => {
         const dateStr = formatDateForApi(d)
         const total = dayExistingTotal(dateStr) + daySessionTotal(dateStr)
-        const over = total > 8.001
-        const isLeave = leaveDays.has(dateStr)
+        const leave = leaveDays.get(dateStr)
+        const limit = dailyLimitFor(leave)
+        const over = total > limit + 0.001
         return (
           <div
             key={dateStr}
-            className={`${DAY_COL_CLASS} ${dayColumnBgClass(d, isLeave)} px-1 py-2 flex items-center justify-center text-xs font-semibold ${
+            className={`${DAY_COL_CLASS} ${dayColumnBgClass(d, leave)} px-1 py-2 flex items-center justify-center text-xs font-semibold ${
               over
                 ? 'text-red-600 dark:text-red-400'
-                : total >= 8
+                : total >= limit
                 ? 'text-green-600 dark:text-green-400'
-                : isLeave
-                ? 'text-purple-600 dark:text-purple-300'
                 : 'text-gray-700 dark:text-gray-300'
             }`}
+            title={leave === 'half' ? `Half day leave — ${limit}h limit` : undefined}
           >
-            {total > 0 ? `${total.toFixed(2).replace(/\.?0+$/, '')}h` : isLeave ? 'Leave' : '—'}
+            {total > 0 ? `${formatHours(total)}h${leave === 'half' ? ` / ${limit}h` : ''}` : '—'}
           </div>
         )
       })}
@@ -1034,7 +1076,7 @@ function WeekSubmitBar({
         </div>
         {hasOverLimitDay && (
           <div className="text-xs text-red-600 dark:text-red-400 font-medium bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-700 px-2 py-1 rounded-lg">
-            One or more days exceed 8h
+            One or more days exceed their daily limit
           </div>
         )}
       </div>
