@@ -109,7 +109,7 @@ export default function DashboardPage() {
   const contentWidthClass = effectiveViewMode === 'week' ? 'max-w-6xl' : 'max-w-3xl'
 
   return (
-    <div className="h-screen bg-gray-50 dark:bg-gray-900 flex flex-col overflow-hidden">
+    <div className="dashboard-page h-screen bg-gray-50 dark:bg-gray-900 flex flex-col overflow-hidden">
       {/* Header */}
       <header className="bg-jira-navy text-white shadow-md flex-shrink-0">
         <div className={`${contentWidthClass} mx-auto px-4 py-3 flex items-center justify-between`}>

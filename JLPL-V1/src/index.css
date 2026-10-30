@@ -23,6 +23,40 @@
   }
 }
 
+.dashboard-page {
+  position: relative;
+  isolation: isolate;
+}
+
+.dashboard-page::before,
+.dashboard-page::after {
+  content: '';
+  position: fixed;
+  inset-block: 0;
+  width: min(30vw, 380px);
+  background-image: url('/dashboard-side-background.png');
+  background-size: cover;
+  background-position: center;
+  opacity: 0.12;
+  pointer-events: none;
+  z-index: -1;
+}
+
+.dashboard-page::before {
+  left: 0;
+}
+
+.dashboard-page::after {
+  right: 0;
+}
+
+@media (max-width: 640px) {
+  .dashboard-page::before,
+  .dashboard-page::after {
+    display: none;
+  }
+}
+
 @layer components {
   .btn-primary {
     @apply bg-jira-blue hover:bg-jira-blue-dark text-white font-semibold py-2.5 px-5 rounded-lg transition-colors duration-150 disabled:opacity-50 disabled:cursor-not-allowed;
